@@ -1017,7 +1017,7 @@ class InteractiveGUI(QWidget):
         
             print("Switching to hardware-triggered acquisition...")
 
-            self.countOfImagesToGrab=1800
+            self.countOfImagesToGrab=200#1800
             # Disable any triggers first
             self.camera.TriggerSource.SetValue("Line1")
             self.camera.TriggerMode.SetValue("Off")
@@ -1124,11 +1124,12 @@ class InteractiveGUI(QWidget):
             self.camera.TriggerActivation.SetValue("RisingEdge")
 
             self.camera.StartGrabbingMax(self.countOfImagesToGrab)
+            time.sleep(0.2)
             last_frame_number = None
 
             while self.camera.IsGrabbing():
                 grab_start = time.perf_counter_ns()  # Start timing grab
-                grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+                grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
                 grab_end = time.perf_counter_ns()
                 if grabResult.GrabSucceeded():
                     frame_number = grabResult.GetBlockID()
@@ -1150,6 +1151,7 @@ class InteractiveGUI(QWidget):
                 last_frame_number = frame_number  # Update last frame number
                 grabResult.Release()
                 idx=idx+1
+                # print(idx)
 
                 if idx==5:
                     plm.start_sequence(frames)

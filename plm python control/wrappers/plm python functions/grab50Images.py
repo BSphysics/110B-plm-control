@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 import cv2
 from matplotlib import pyplot as plt
+import time
 
 
 def grab_50_images(camera, beamName):
@@ -21,6 +22,7 @@ def grab_50_images(camera, beamName):
 
     # Start grabbing manually
     camera.StartGrabbingMax(images_per_batch)
+    time.sleep(0.1)
 
     # Get image dimensions
     camera_width = camera.Width.Value
@@ -34,6 +36,7 @@ def grab_50_images(camera, beamName):
     for image_index in range(images_per_batch):
         # Issue software trigger
         camera.TriggerSoftware.Execute()
+        time.sleep(0.05)
 
         # Wait for image
         grab_result = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)

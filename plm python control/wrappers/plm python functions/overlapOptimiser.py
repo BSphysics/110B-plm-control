@@ -196,7 +196,7 @@ def overlap_optimiser(self, plm, camera):
 
     xdiff = beamA_centroid_zoom_x - beamB_centroid_zoom_x
     ydiff = beamA_centroid_zoom_y - beamB_centroid_zoom_y
-    k = 0.0005        # k = Search tuning parameter => Larger values mean faster search, by might start oscillating
+    k = 0.0005        # k = Search tuning parameter => Larger values mean faster search, but might start oscillating
     cumulative_tilt_x_zoom = 0
     cumulative_tilt_y_zoom = 0
 
