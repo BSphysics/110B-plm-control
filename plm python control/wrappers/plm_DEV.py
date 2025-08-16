@@ -1017,7 +1017,7 @@ class InteractiveGUI(QWidget):
         
             print("Switching to hardware-triggered acquisition...")
 
-            self.countOfImagesToGrab=200#1800
+            self.countOfImagesToGrab=1800
             # Disable any triggers first
             self.camera.TriggerSource.SetValue("Line1")
             self.camera.TriggerMode.SetValue("Off")
