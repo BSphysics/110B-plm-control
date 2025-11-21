@@ -7,7 +7,6 @@ sys.path.append(os.path.join(scriptDir,"basler python functions" ))
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-#gs = GridSpec(1, 2, width_ratios=[2, 1])
 
 plt.close('all')
 from PyQt5.QtWidgets import (
@@ -15,7 +14,6 @@ from PyQt5.QtWidgets import (
 )
 
 from PyQt5.QtCore import QTimer, QSettings
-
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib
 matplotlib.use('Agg')
@@ -36,6 +34,7 @@ from phaseScanAnalysor import phase_scan_analysor
 from grab50Images import grab_50_images
 from tiltMapping import tilt_mapping
 from overlapOptimiser import overlap_optimiser
+from slider import slider
 
 from applyDarkTheme import apply_dark_theme
 from applyDarkPlotTheme import apply_dark_plot_theme
@@ -167,6 +166,7 @@ class InteractiveGUI(QWidget):
         self.tilt_mapping_flag = False
         self.overlap_optimiser_flag = False
         self.multibeam_seq_flag = False
+        self.slider_flag = False
 
         
         """Set up the GUI layout and widgets."""
@@ -438,6 +438,12 @@ class InteractiveGUI(QWidget):
         self.overlap_button.setStyleSheet("background-color: yellow; color: red;")
         self.overlap_button.clicked.connect(self.overlap)
         self.middle_layout.addWidget(self.overlap_button)
+
+        # Slider button 1
+        self.slider_button = QPushButton('Slider shift', self)
+        self.slider_button.setStyleSheet("background-color: black; color: white;")
+        self.slider_button.clicked.connect(self.slider)
+        self.middle_layout.addWidget(self.slider_button)
         
         self.middle_layout.addStretch()
 
@@ -586,6 +592,10 @@ class InteractiveGUI(QWidget):
 
     def overlap(self):
         self.overlap_optimiser_flag = True
+        self.update_value()
+
+    def slider(self):
+        self.slider_flag = True
         self.update_value()
 
     def update_camera_acquisition_time(self):
