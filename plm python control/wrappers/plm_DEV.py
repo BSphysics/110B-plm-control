@@ -131,6 +131,9 @@ class InteractiveGUI(QWidget):
         self.timer.timeout.connect(self.update_camera_feed)
         self.timer.start(100)  # Update every 100ms
         self.camera = camera
+        self.ELLser = None
+        self.serial_port = 'COM4'  # Change this to your actual COM port
+        self.baudrate = 9600
 
     def init_ui(self):
         # apply_dark_theme(self)
@@ -442,7 +445,7 @@ class InteractiveGUI(QWidget):
         # Slider button 1
         self.slider_button = QPushButton('Slider shift', self)
         self.slider_button.setStyleSheet("background-color: black; color: white;")
-        self.slider_button.clicked.connect(self.slider)
+        self.slider_button.clicked.connect(self.slider_UI)
         self.middle_layout.addWidget(self.slider_button)
         
         self.middle_layout.addStretch()
@@ -594,7 +597,7 @@ class InteractiveGUI(QWidget):
         self.overlap_optimiser_flag = True
         self.update_value()
 
-    def slider(self):
+    def slider_UI(self):
         self.slider_flag = True
         self.update_value()
 
@@ -780,6 +783,11 @@ class InteractiveGUI(QWidget):
             print('Attempting to optimise overlap of Beam B with Beam A')
             overlap_optimiser(self, plm, camera)
             self.overlap_optimiser_flag = False
+
+        if self.slider_flag:
+            print('Slider')
+            slider(self)
+            self.slider_flag = False
 
         if self.amp_ramp_frame_flag:
             plm.pause_ui()
