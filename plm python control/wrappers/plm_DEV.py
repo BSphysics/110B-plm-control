@@ -170,6 +170,7 @@ class InteractiveGUI(QWidget):
         self.overlap_optimiser_flag = False
         self.multibeam_seq_flag = False
         self.slider_flag = False
+        self.slider_position = None
 
         
         """Set up the GUI layout and widgets."""
@@ -442,9 +443,9 @@ class InteractiveGUI(QWidget):
         self.overlap_button.clicked.connect(self.overlap)
         self.middle_layout.addWidget(self.overlap_button)
 
-        # Slider button 1
-        self.slider_button = QPushButton('Slider shift', self)
-        self.slider_button.setStyleSheet("background-color: black; color: white;")
+        # Slider button 
+        self.slider_button = QPushButton('Slider toggle', self)
+        self.slider_button.setStyleSheet("background-color: gray; color: yellow;")
         self.slider_button.clicked.connect(self.slider_UI)
         self.middle_layout.addWidget(self.slider_button)
         
@@ -598,8 +599,16 @@ class InteractiveGUI(QWidget):
         self.update_value()
 
     def slider_UI(self):
+        if self.slider_flag:   # safeguard
+            return
         self.slider_flag = True
-        self.update_value()
+        QTimer.singleShot(0, self.update_value)  # avoid recursion
+
+    def update_slider_button_style(self):
+        if self.slider_position == "Attenuator":
+            self.slider_button.setStyleSheet("background-color: purple; color: yellow;")
+        else:
+            self.slider_button.setStyleSheet("background-color: green; color: white;")
 
     def update_camera_acquisition_time(self):
         try:
@@ -1067,12 +1076,15 @@ class InteractiveGUI(QWidget):
 
             # Camera is now waiting for a TTL trigger on Line 3 to start the acquistion 
             self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            time.sleep(0.05)
             print(" Waiting for Acquisition Start trigger on Line 3...")
             # grabResult = camera.RetrieveResult(1800000, pylon.TimeoutHandling_ThrowException)
 
 
         if self.beam_A_SP_scan_enabled or self.beam_B_SP_scan_enabled or self.beam_A_complex_field_measurement_enabled or self.beam_B_complex_field_measurement_enabled:
             plm.set_frame(60) #choose any empty frame to make sure camera not exposed whilst frames are bitpacked
+            self.slider_position = "Attenuator"  # 
+            slider(self) 
             time.sleep(1)
             plm.pause_ui()
             if self.beam_A_SP_scan_enabled:
