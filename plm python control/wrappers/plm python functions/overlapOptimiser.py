@@ -57,6 +57,7 @@ def overlap_optimiser(self, plm, camera):
         # Issue software trigger
         camera.TriggerSoftware.Execute()
         # Wait for image
+        time.sleep(0.05)
         grab_result = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 
         if grab_result.GrabSucceeded():
@@ -119,6 +120,7 @@ def overlap_optimiser(self, plm, camera):
         # Issue software trigger
         camera.TriggerSoftware.Execute()
         # Wait for image
+        time.sleep(0.05)
         grab_result = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 
         if grab_result.GrabSucceeded():
@@ -172,6 +174,7 @@ def overlap_optimiser(self, plm, camera):
 
         for image_index in range(images_per_batch):
             camera.TriggerSoftware.Execute()
+            time.sleep(0.05)
             grab_result = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 
             if grab_result.GrabSucceeded():
@@ -241,6 +244,7 @@ def overlap_optimiser(self, plm, camera):
 
         for image_index in range(images_per_batch):
             camera.TriggerSoftware.Execute()
+            time.sleep(0.05)
             grab_result = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 
             if grab_result.GrabSucceeded():
@@ -302,6 +306,7 @@ def overlap_optimiser(self, plm, camera):
 
         for image_index in range(images_per_batch):
             camera.TriggerSoftware.Execute()
+            time.sleep(0.05)
             grab_result = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 
             if grab_result.GrabSucceeded():
