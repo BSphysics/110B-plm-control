@@ -31,7 +31,7 @@ def camConfig(camera, image_height, image_width, offset_x, offset_y, exposureTim
         print("Warning: 'Height' parameter not found.")
     
     if camera.GetNodeMap().GetNode("AcquisitionFrameRateEnable") is not None:
-        camera.AcquisitionFrameRateEnable.SetValue(True)
+        camera.AcquisitionFrameRateEnable.SetValue(False)
     else:
         print("Warning: 'AcquisitionFrameRateEnable' not found.")
         

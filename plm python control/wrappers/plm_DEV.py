@@ -1137,6 +1137,8 @@ class InteractiveGUI(QWidget):
             if grabResult.GrabSucceeded():
                 print("TTL trigger received on Line 03.")
                 grabResult.Release() 
+                plm.play()
+                plm.play()
             else:
                 print("Timeout waiting for the first image.")
                 self.camera.StopGrabbing()  # Important: Stop grabbing before reconfiguring.
@@ -1154,7 +1156,7 @@ class InteractiveGUI(QWidget):
             self.camera.TriggerActivation.SetValue("RisingEdge")
 
             self.camera.StartGrabbingMax(self.countOfImagesToGrab)
-            time.sleep(0.2)
+            #time.sleep(0.2)
             last_frame_number = None
 
             while self.camera.IsGrabbing():
@@ -1181,11 +1183,13 @@ class InteractiveGUI(QWidget):
                 last_frame_number = frame_number  # Update last frame number
                 grabResult.Release()
                 idx=idx+1
-                # print(idx)
+                #print(idx)
 
                 if idx==5:
                     plm.start_sequence(frames)
                     print('plm sequence started')
+                    plm.play()
+                    plm.play()
 
             self.camera_trigger_mode_button.setChecked(False)
             self.hardware_triggering_enabled = False
