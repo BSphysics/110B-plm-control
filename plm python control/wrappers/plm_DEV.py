@@ -124,6 +124,17 @@ plm.play()
 class InteractiveGUI(QWidget):
     def __init__(self):
         super().__init__()
+
+        # Force digital trigger line LOW at startup
+        try:
+            init_task = nidaqmx.Task()
+            init_task.do_channels.add_do_chan("Dev1/port0/line0")
+            init_task.write(False)   # Set line LOW
+            init_task.stop()
+            init_task.close()
+        except Exception as e:
+            print("Warning: Failed to initialize trigger line low:", e)
+
         self.settings = QSettings("plm_GUI")
         self.init_ui()
 
@@ -758,7 +769,8 @@ class InteractiveGUI(QWidget):
         if self.multibeam_flag:
             plm.pause_ui()
             print('Entering multibeam mode - hold on to your hats!')
-            combinedComplex = load_multibeam_data(self)
+            combinedComplex, multibeam_file_path = load_multibeam_data(self)
+            print('Multibeam file path = ' + str(multibeam_file_path))
             amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
             plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
             self.multibeam_flag = False
@@ -773,6 +785,37 @@ class InteractiveGUI(QWidget):
             time.sleep(0.2)
             plm.play()
             plm.play()
+
+            init_command = b'0bw\n'
+
+            def initial_move():
+                try:
+                    self.ELLser = serial.Serial(
+                        port=self.serial_port,
+                        baudrate=self.baudrate,
+                        parity=serial.PARITY_NONE,
+                        stopbits=serial.STOPBITS_ONE
+                    )
+                    self.ELLser.reset_input_buffer()
+                    self.ELLser.flushInput()
+                    self.ELLser.flushOutput()
+
+                    self.ELLser.write(init_command)
+                    time.sleep(1.5)
+
+                except serial.SerialException as e:
+                    print(f"Serial error during initialisation: {e}")
+
+                finally:
+                    if self.ELLser and self.ELLser.is_open:
+                        self.ELLser.flushInput()
+                        self.ELLser.flushOutput()
+                        self.ELLser.close()
+
+            initial_move()
+
+        # Set known state
+        self.slider_position = "Attenuator"
 
         if self.multibeam_seq_flag:
             plm.pause_ui()
@@ -1130,6 +1173,7 @@ class InteractiveGUI(QWidget):
             self.task.write(False)  
             time.sleep(0.05)  
             self.task.stop()
+            time.sleep(0.1)
 
             grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
 

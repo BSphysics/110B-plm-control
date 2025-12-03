@@ -111,4 +111,4 @@ def load_multibeam_data(self):
 		add_beams_test(finalCombined, beamA_amplitude, beamA_phase, beamB_amplitude, beamB_phase, global_amplitude)
 		finalCombined[np.abs(finalCombined) < 1e-6] = 0
 
-	return finalCombined
+	return finalCombined, file_path
