@@ -35,6 +35,12 @@ from grab50Images import grab_50_images
 from tiltMapping import tilt_mapping
 from overlapOptimiser import overlap_optimiser
 from slider import slider
+from moveSliderToNotAttenuator import move_slider_to_not_attenuator
+
+from cameraUtils import enable_hardware_trigger
+from loadLastPhaseCorrections import load_last_phase_corrections
+from savePhaseFile import save_phase_file
+
 
 from applyDarkTheme import apply_dark_theme
 from applyDarkPlotTheme import apply_dark_plot_theme
@@ -121,6 +127,9 @@ plm.set_phase_map((phase_map_order))
 time.sleep(1)
 plm.play()
 plm.play()
+
+import json
+CONFIG_FILE = "beam_config.json"
 class InteractiveGUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -146,6 +155,28 @@ class InteractiveGUI(QWidget):
         self.serial_port = 'COM4'  # Change this to your actual COM port
         self.baudrate = 9600
 
+        # Load saved corrections
+        load_last_phase_corrections(
+            CONFIG_FILE,
+            self._import_loaded_phase
+        )
+
+    def _load_phase_file(self, path):
+        if path.endswith(".npy"):
+            return np.load(path)
+        elif path.endswith(".csv"):
+            return np.loadtxt(path, delimiter=",")
+        else:
+            return np.loadtxt(path)
+
+    def _import_loaded_phase(self, beam_name, path):
+        data = self._load_phase_file(path)
+
+        if beam_name == "A":
+            self.beam_A_correction_data = data
+        elif beam_name == "B":
+            self.beam_B_correction_data = data
+
     def init_ui(self):
         # apply_dark_theme(self)
         self.camera = camera
@@ -159,6 +190,12 @@ class InteractiveGUI(QWidget):
         self.zoom_counter = 0 
         self.beam_A_SP_scan_enabled= False
         self.beam_B_SP_scan_enabled= False
+
+        self.countOfImagesToGrab = None
+        self.image_height = None
+        self.image_width = None
+        self.offset_x = None
+        self.offset_y = None
 
         self.clear_beam_A_correction_flag = False
         self.clear_beam_B_correction_flag = False
@@ -431,7 +468,7 @@ class InteractiveGUI(QWidget):
         self.middle_layout.addWidget(self.grab_50_button)  
 
         # Load multibeam data button
-        self.multibeam_button = QPushButton('Load multi-beam parameters', self)
+        self.multibeam_button = QPushButton('Load multibeam parameters', self)
         self.multibeam_button.setStyleSheet("background-color: green; color: white;")
         self.multibeam_button.clicked.connect(self.multibeam)
         self.middle_layout.addWidget(self.multibeam_button)  
@@ -636,6 +673,25 @@ class InteractiveGUI(QWidget):
     def save_gui_screenshot(widget, filename):
         pixmap = widget.grab()
         pixmap.save(filename)
+
+    def save_phase_file(beam_key, path):
+    # Load existing config (if any)
+        cfg = {}
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r") as f:
+                    cfg = json.load(f)
+            except:
+                pass
+
+        cfg[beam_key] = path  # e.g. "beam_A_phase_file"
+
+        # Save back to disk
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(cfg, f)
+
+
+
      
     def beam_A_correction(self):
         """Open a file dialog for the user to load a file."""
@@ -656,6 +712,8 @@ class InteractiveGUI(QWidget):
                 return
         
         self.beam_A_correction_data = loaded_data
+        save_phase_file("beam_A_phase_file", file_path)
+
         
     
     def beam_B_correction(self):
@@ -676,7 +734,9 @@ class InteractiveGUI(QWidget):
                 print("Unsupported file format")
                 return
         
-        self.beam_B_correction_data = loaded_data_B    
+        self.beam_B_correction_data = loaded_data_B
+        save_phase_file("beam_B_phase_file", file_path)
+    
     
 
     def update_value(self):
@@ -779,43 +839,12 @@ class InteractiveGUI(QWidget):
                                         
             plm.bitpack_and_insert_gpu(plm_frame, 1)
             plm.resume_ui()
-
             plm.set_frame(1)
-            
             time.sleep(0.2)
             plm.play()
             plm.play()
 
-            init_command = b'0bw\n'
-
-            def initial_move():
-                try:
-                    self.ELLser = serial.Serial(
-                        port=self.serial_port,
-                        baudrate=self.baudrate,
-                        parity=serial.PARITY_NONE,
-                        stopbits=serial.STOPBITS_ONE
-                    )
-                    self.ELLser.reset_input_buffer()
-                    self.ELLser.flushInput()
-                    self.ELLser.flushOutput()
-
-                    self.ELLser.write(init_command)
-                    time.sleep(1.5)
-
-                except serial.SerialException as e:
-                    print(f"Serial error during initialisation: {e}")
-
-                finally:
-                    if self.ELLser and self.ELLser.is_open:
-                        self.ELLser.flushInput()
-                        self.ELLser.flushOutput()
-                        self.ELLser.close()
-
-            initial_move()
-
-        # Set known state
-        self.slider_position = "Attenuator"
+            move_slider_to_not_attenuator(self)
 
         if self.multibeam_seq_flag:
             plm.pause_ui()
@@ -833,7 +862,12 @@ class InteractiveGUI(QWidget):
 
         if self.overlap_optimiser_flag:
             print('Attempting to optimise overlap of Beam B with Beam A')
-            overlap_optimiser(self, plm, camera)
+            newBxTilt , newByTilt , zero_phase = overlap_optimiser(self, plm, camera)
+            # Update the GUI text boxes with the new values
+            self.inputs[2].setText(f"{newBxTilt:.4f}")
+            self.inputs[3].setText(f"{newByTilt:.4f}")
+            self.inputs[18].setText(f"{zero_phase:.2f}")
+
             self.overlap_optimiser_flag = False
 
         if self.slider_flag:
@@ -1080,53 +1114,11 @@ class InteractiveGUI(QWidget):
             plm.play()
 
         if self.hardware_triggering_enabled:
-            print('Hardware triggering enabled')
-
-            if self.camera.IsGrabbing():
-                self.camera.StopGrabbing()
-        
-            print("Switching to hardware-triggered acquisition...")
-
-            self.countOfImagesToGrab=1800
-            # Disable any triggers first
-            self.camera.TriggerSource.SetValue("Line1")
-            self.camera.TriggerMode.SetValue("Off")
-                
-            # Select GPIO line 3
-            self.camera.LineSelector.Value = "Line3"
-            self.camera.LineMode.Value = "Input"
-            self.camera.TriggerSource.SetValue("Line3")
-            self.camera.TriggerMode.SetValue("Off") 
-
-            self.camera.TriggerSelector.SetValue("FrameStart")
-            self.camera.TriggerSource.SetValue("Line3")
-            self.camera.TriggerMode.SetValue("On")
-            self.camera.TriggerActivation.SetValue("RisingEdge")
-
-            image_height = 128
-            image_width = 128
-            
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            
-            offset_x = 208
-            offset_y = 208
-            
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-
-            self.camera.ExposureTimeAbs.SetValue(400)
-
-            # Camera is now waiting for a TTL trigger on Line 3 to start the acquistion 
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            time.sleep(0.05)
-            print(" Waiting for Acquisition Start trigger on Line 3...")
-            # grabResult = camera.RetrieveResult(1800000, pylon.TimeoutHandling_ThrowException)
-
+            enable_hardware_trigger(self)
 
         if self.beam_A_SP_scan_enabled or self.beam_B_SP_scan_enabled or self.beam_A_complex_field_measurement_enabled or self.beam_B_complex_field_measurement_enabled:
             plm.set_frame(60) #choose any empty frame to make sure camera not exposed whilst frames are bitpacked
-            self.slider_position = "Attenuator"  # 
+            self.slider_position = "Attenuator"  
             slider(self) 
             time.sleep(1)
             plm.pause_ui()
@@ -1142,14 +1134,14 @@ class InteractiveGUI(QWidget):
                 print('\n Attempting complex field measurement for Beam B')
 
             phase_tilt = phase_tilt.astype(np.float32)   
-            print('\n Compiling super pixel frames - this takes about 15 seconds')         
+            print('\n Compiling super pixel frames - this takes about 25 seconds')         
             sPix_phase, nx_sPix, ny_sPix = super_pixel_set_numba(64, 64, phase_tilt, 4)
 
             sPix_phase_init = super_pixel_set_init (phase_tilt,sPix_phase)
 
             SP_frames = super_pixel_frames(sPix_phase_init)
 
-            global superPixelFrames
+            #global superPixelFrames
             superPixelFrames = SP_frames
 
             for i in range(SP_frames.shape[0]):
@@ -1189,7 +1181,7 @@ class InteractiveGUI(QWidget):
                 self.camera.Close()
             
             self.camera.StopGrabbing()
-            all_images = np.zeros((self.countOfImagesToGrab, image_height, image_width), dtype=np.uint8)
+            all_images = np.zeros((self.countOfImagesToGrab, self.image_height, self.image_width), dtype=np.uint8)
             
             idx = 0 
             self.camera.MaxNumBuffer.Value = 25
