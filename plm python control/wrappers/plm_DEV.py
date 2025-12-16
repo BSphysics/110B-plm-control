@@ -47,6 +47,7 @@ from applyDarkPlotTheme import apply_dark_plot_theme
 
 from polMeasure import pol_measure
 from loadMultibeamData import load_multibeam_data
+from multiBeamSequence import multi_beam_seq
 
 import ctypes
 from PLMController import PLMController 
@@ -849,11 +850,120 @@ class InteractiveGUI(QWidget):
         if self.multibeam_seq_flag:
             plm.pause_ui()
             print('Running selected multiBeam squence with HW triggering')
+            multi_beam_seq_frame = multi_beam_seq(self)
             self.multibeam_seq_flag = False
+            plm.bitpack_and_insert_gpu(multi_beam_seq_frame, 66)
             plm.resume_ui()
+            plm.play()
+            plm.play()
             time.sleep(0.2)
+
+            # Here we setup the hardware triggered acquistion at 720 Hz (using PLM triggers) but remember that the Hardware triggered
+            #button has to be pressed before pressing the multibeam sequence button
+            time.sleep(0.1) 
+            print("Sending TTL to Line 3...")
+            self.task.start()  # Basler acquisition start trigger
+            self.task.write(True)  
+            time.sleep(0.05)  
+            self.task.write(False)  
+            time.sleep(0.05)  
+            self.task.stop()
+
+            grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+
+            #Hardware triggered acquistion starts here
+            if grabResult.GrabSucceeded():
+                print("TTL trigger received on Line 03.")
+                grabResult.Release() 
+            else:
+                print("Timeout waiting for the first image.")
+                self.camera.StopGrabbing()  
+                self.camera.Close()
+            
+            self.camera.StopGrabbing()
+            all_images = np.zeros((800, 128, 128), dtype=np.uint8)
+
+            idx = 0 
+            self.camera.MaxNumBuffer.Value = 25
+            self.camera.TriggerSource.SetValue("Line1")  
+            self.camera.TriggerSelector.SetValue("FrameStart")
+            self.camera.TriggerMode.SetValue("On")  # Enable per-frame trigger
+            
+            self.camera.TriggerActivation.SetValue("RisingEdge")
+            image_height = 128
+            image_width = 128
+            self.camera.Width.SetValue(image_width)
+            self.camera.Height.SetValue(image_height)
+
+            offset_x = 208
+            offset_y = 128            
+            self.camera.OffsetX.SetValue(offset_x)
+            self.camera.OffsetY.SetValue(offset_y)
+
+            self.camera.ExposureTimeAbs.SetValue(200)
+            self.camera.StartGrabbingMax(800)
+            last_frame_number = None
+
+            while self.camera.IsGrabbing():
+                grab_start = time.perf_counter_ns()  # Start timing grab
+                grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+                grab_end = time.perf_counter_ns()
+                if grabResult.GrabSucceeded():
+                    frame_number = grabResult.GetBlockID()
+                    
+                    img = grabResult.Array
+                    all_images[idx]=img                   
+                else:
+                    print("Error: ", grabResult.ErrorCode, grabResult.ErrorDescription)
+                
+                grab_time_us = (grab_end - grab_start)
+                timing_data.append(grab_time_us)
+                
+                frame_number = grabResult.GetBlockID()
+                
+                if last_frame_number is not None and frame_number != last_frame_number + 1:
+                    missed_triggers = frame_number - last_frame_number - 1
+                    print(f"Warning: Missed {missed_triggers} trigger(s)!")
+                        
+                last_frame_number = frame_number  # Update last frame number
+                grabResult.Release()
+                idx=idx+1
+
+                if idx==5:
+                    plm.set_frame(66)
+                    print('Multibeam seq started')
+                    plm.play()
+                    plm.play()
+
+            self.camera_trigger_mode_button.setChecked(False)
+            self.hardware_triggering_enabled = False
+                       
+            print('\nAll images acquired')
+            folder_name = save_super_pixel_images(all_images, '_multibeam_seq')
+            filename = os.path.join(folder_name, 'GUI screenshot.png')
+            self.save_gui_screenshot(filename)
+            
+            print('\nSwitching back to free streaming')
+            self.camera.TriggerMode.SetValue("Off")        
+            offset_x = 0
+            offset_y = 0        
+            self.camera.OffsetX.SetValue(offset_x)
+            self.camera.OffsetY.SetValue(offset_y)
+            image_height = 512
+            image_width = 512
+            self.camera.Width.SetValue(image_width)
+            self.camera.Height.SetValue(image_height)
+            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            plm.set_frame(0)
+            time.sleep(0.5)
             plm.play()
             plm.play()
+
+
+
+
+
+
 
         if self.tilt_mapping_flag:
             print('Running tilt map sequence \n')
