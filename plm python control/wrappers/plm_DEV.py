@@ -178,6 +178,20 @@ class InteractiveGUI(QWidget):
         elif beam_name == "B":
             self.beam_B_correction_data = data
 
+    def switch_to_free_streaming(self):
+        """Return camera + PLM to free-running live streaming mode."""
+        print('\nSwitching back to free streaming')
+        self.camera.TriggerMode.SetValue("Off")
+        self.camera.OffsetX.SetValue(0)
+        self.camera.OffsetY.SetValue(0)
+        self.camera.Width.SetValue(512)
+        self.camera.Height.SetValue(512)
+        self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+        plm.set_frame(0)
+        time.sleep(0.5)
+        plm.play()
+        plm.play()
+
     def init_ui(self):
         # apply_dark_theme(self)
         self.camera = camera
@@ -942,28 +956,7 @@ class InteractiveGUI(QWidget):
             folder_name = save_super_pixel_images(all_images, '_multibeam_seq')
             filename = os.path.join(folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
-            
-            print('\nSwitching back to free streaming')
-            self.camera.TriggerMode.SetValue("Off")        
-            offset_x = 0
-            offset_y = 0        
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-            image_height = 512
-            image_width = 512
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            plm.set_frame(0)
-            time.sleep(0.5)
-            plm.play()
-            plm.play()
-
-
-
-
-
-
+            self.switch_to_free_streaming()
 
         if self.tilt_mapping_flag:
             print('Running tilt map sequence \n')
@@ -1031,7 +1024,7 @@ class InteractiveGUI(QWidget):
             self.camera.Height.SetValue(image_height)
 
             offset_x = 208
-            offset_y = 208            
+            offset_y = 128            
             self.camera.OffsetX.SetValue(offset_x)
             self.camera.OffsetY.SetValue(offset_y)
 
@@ -1077,22 +1070,7 @@ class InteractiveGUI(QWidget):
             folder_name = save_super_pixel_images(all_images, '_Amp ramp')
             filename = os.path.join(folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
-            
-            print('\nSwitching back to free streaming')
-            self.camera.TriggerMode.SetValue("Off")        
-            offset_x = 0
-            offset_y = 0        
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-            image_height = 512
-            image_width = 512
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            plm.set_frame(0)
-            time.sleep(0.5)
-            plm.play()
-            plm.play()
+            self.switch_to_free_streaming()
             self.amp_ramp_frame_flag = False
 
         if self.phase_scan_frame_flag:
@@ -1143,7 +1121,7 @@ class InteractiveGUI(QWidget):
             self.camera.Height.SetValue(image_height)
 
             offset_x = 208
-            offset_y = 208            
+            offset_y = 128            
             self.camera.OffsetX.SetValue(offset_x)
             self.camera.OffsetY.SetValue(offset_y)
 
@@ -1186,24 +1164,10 @@ class InteractiveGUI(QWidget):
             self.hardware_triggering_enabled = False
                        
             print('\nAll images acquired')
+            print("\nGrabbed image min and max:", all_images.min(), all_images.max())
             folder_name = save_super_pixel_images(all_images, 'phase scan')
             phase_scan_analysor(all_images)
-
-            print('\nSwitching back to free streaming')
-            self.camera.TriggerMode.SetValue("Off")        
-            offset_x = 0
-            offset_y = 0        
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-            image_height = 512
-            image_width = 512
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            plm.set_frame(0)
-            time.sleep(0.5)
-            plm.play()
-            plm.play()
+            self.switch_to_free_streaming()
             self.phase_scan_frame_flag = False
                 
         if self.bitpack_enabled:
@@ -1363,21 +1327,7 @@ class InteractiveGUI(QWidget):
             self.beam_B_SP_scan_enabled= False
             self.beam_A_complex_field_measurement_enabled = False
             self.beam_B_complex_field_measurement_enabled = False
-            print('\nSwitching back to free streaming')
-            self.camera.TriggerMode.SetValue("Off")        
-            offset_x = 0
-            offset_y = 0        
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-            image_height = 512
-            image_width = 512
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            self.camera.ExposureTimeAbs.SetValue(200)
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-
-            plm.play()
-            plm.play()
+            self.switch_to_free_streaming()
 
         
 

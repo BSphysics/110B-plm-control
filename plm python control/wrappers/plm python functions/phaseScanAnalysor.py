@@ -4,34 +4,48 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 from scipy.interpolate import interp1d
 
+def baslerCentroid(img, sigma, thresh):
+    
+    img = gaussian_filter(img, sigma)
+    
+    mask = img > thresh
+    
+    rows, cols = np.indices(img.shape)
+    
+    if np.any(mask):  # Check if any high-intensity pixels exist
+    
+        centroid_x = int(np.sum(cols * mask * img) / np.sum(img[mask]))
+        centroid_y = int(np.sum(rows * mask * img) / np.sum(img[mask]))
+        
+    else:
+        centroid_x = int(48)
+        centroid_y = int(48)
+        print('These are just placeholder values - beam intensity too low to find proper centroid')
+        # return None
+       
+    return centroid_x, centroid_y
+
 
 def phase_scan_analysor(imgs):
 
-
-    img_sum = np.sum(imgs,axis=(1,2))
+    img_sum = np.sum(imgs, axis=(1, 2))
     brightest_idx = np.argmax(img_sum)
-
     brightest_image = imgs[brightest_idx]
 
-    img = gaussian_filter(brightest_image, 3)
+    centroid_x, centroid_y = baslerCentroid(
+        brightest_image,
+        sigma=3,
+        thresh=5
+    )
 
-    mask = img > 5
-
-    rows, cols = np.indices(img.shape)
-
-    if np.any(mask):  # Check if any high-intensity pixels exist
-
-        centroid_x = int(np.sum(cols * mask * img) / np.sum(img[mask]))
-        centroid_y = int(np.sum(rows * mask * img) / np.sum(img[mask]))
-
-    rectangle_half=10
-       
+    rectangle_half = 10
     height, width = brightest_image.shape
+
     rect_x_coord = centroid_x - rectangle_half
     rect_y_coord = centroid_y - rectangle_half
-       
-    rect_end_x = rect_x_coord + int(2*rectangle_half)
-    rect_end_y = rect_y_coord + int(2*rectangle_half)
+
+    rect_end_x = rect_x_coord + 2 * rectangle_half
+    rect_end_y = rect_y_coord + 2 * rectangle_half
    
 
     imSum=[]
