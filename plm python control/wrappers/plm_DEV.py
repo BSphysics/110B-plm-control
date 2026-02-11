@@ -30,7 +30,8 @@ from saveSuperPixelImages import save_super_pixel_images
 from wavefrontCorrection import wavefront_correction
 from phaseScanningFrameGenerator import phase_scanning_frame_generator
 from ampRampFrameGenerator import amp_ramp_frame_generator
-from phaseScanAnalysor import phase_scan_analysor
+#from phaseScanAnalysor import phase_scan_analysor
+from findGlobalPhaseMinimum2 import find_global_phase_minimum_2
 from grab50Images import grab_50_images
 from tiltMapping import tilt_mapping
 from overlapOptimiser import overlap_optimiser
@@ -444,6 +445,8 @@ class InteractiveGUI(QWidget):
 
          # Generate plm frame (24 phase maps) that scan global phase and record images using HW triggering button
         self.global_phase_scan_button = QPushButton('Global phase scan frame', self)
+        self.global_phase_scan_button.setStyleSheet(
+            "background-color: #1ABC9C; color: white; font-weight: bold;")
         self.global_phase_scan_button.clicked.connect(self.global_phase_scan)
         self.middle_layout.addWidget(self.global_phase_scan_button)
 
@@ -1074,100 +1077,39 @@ class InteractiveGUI(QWidget):
             self.amp_ramp_frame_flag = False
 
         if self.phase_scan_frame_flag:
-            plm.pause_ui()
-            print('Bitpacking phase scan frame')
-            plm_phase_scan_frame = phase_scanning_frame_generator (beamA_phase_tilt ,self.beam_A_correction_data , beamA_HG_phase , beamB_phase, beamA_amplitude, beamB_amplitude)
-            plm_phase_scan_frame = np.transpose(plm_phase_scan_frame, (1, 0, 2)).copy(order='F')
-            
-            plm.bitpack_and_insert_gpu(plm_phase_scan_frame, 65)
+            if camera.IsGrabbing():
+                camera.StopGrabbing()
 
-            plm.resume_ui()
-            plm.play()
-            plm.play()
-            
-            time.sleep(0.1)
-            print("Sending TTL to Line 3...")
-            self.task.start()  # Basler acquisition start trigger
-            self.task.write(True)  
-            time.sleep(0.05)  
-            self.task.write(False)  
-            time.sleep(0.05)  
-            self.task.stop()
+            camera.TriggerMode.SetValue("Off")  # free run
+            camera.StartGrabbingMax(1)
 
-            grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+            grab_result = camera.RetrieveResult(
+                5000, pylon.TimeoutHandling_ThrowException
+            )
 
-            #Hardware triggered acquistion starts here
-            if grabResult.GrabSucceeded():
-                print("TTL trigger received on Line 03.")
-                grabResult.Release() 
+            if grab_result.GrabSucceeded():
+                img = grab_result.Array
             else:
-                print("Timeout waiting for the first image.")
-                self.camera.StopGrabbing()  # Important: Stop grabbing before reconfiguring.
-                self.camera.Close()
-            
-            self.camera.StopGrabbing()
-            all_images = np.zeros((800, 128, 128), dtype=np.uint8)
-            
-            idx = 0 
-            self.camera.MaxNumBuffer.Value = 25
-            self.camera.TriggerSource.SetValue("Line1")  
-            self.camera.TriggerSelector.SetValue("FrameStart")
-            self.camera.TriggerMode.SetValue("On")  # Enable per-frame trigger
-            
-            self.camera.TriggerActivation.SetValue("RisingEdge")
-            image_height = 128
-            image_width = 128
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
+                img = None
+            grab_result.Release()
+            camera.StopGrabbing()
 
-            offset_x = 208
-            offset_y = 128            
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
+            self.centroid_x, self.centroid_y = baslerCentroid(img, 3, 5)
+            print('XY centroid = ' + str(self.centroid_x) + ' ' + str(self.centroid_y) + ' pix')
 
-            self.camera.ExposureTimeAbs.SetValue(200)
-            self.camera.StartGrabbingMax(800)
-            last_frame_number = None
+            roi_size = 64
+            half_roi = roi_size // 2
+            cx, cy = int(self.centroid_x), int(self.centroid_y)
 
-            while self.camera.IsGrabbing():
-                grab_start = time.perf_counter_ns()  # Start timing grab
-                grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
-                grab_end = time.perf_counter_ns()
-                if grabResult.GrabSucceeded():
-                    frame_number = grabResult.GetBlockID()
-                    
-                    img = grabResult.Array
-                    all_images[idx]=img                   
-                else:
-                    print("Error: ", grabResult.ErrorCode, grabResult.ErrorDescription)
-                
-                grab_time_us = (grab_end - grab_start)
-                timing_data.append(grab_time_us)
-                
-                frame_number = grabResult.GetBlockID()
-                
-                if last_frame_number is not None and frame_number != last_frame_number + 1:
-                    missed_triggers = frame_number - last_frame_number - 1
-                    print(f"Warning: Missed {missed_triggers} trigger(s)!")
-                        
-                last_frame_number = frame_number  # Update last frame number
-                grabResult.Release()
-                idx=idx+1
+            # Make sure ROI is within bounds
+            xmin = max(cx - half_roi, 0)
+            xmax = min(cx + half_roi, 512)
+            ymin = max(cy - half_roi, 0)
+            ymax = min(cy + half_roi, 512)
 
-                if idx==5:
-                    plm.set_frame(65)
-                    print('Global phase scan started')
-                    plm.play()
-                    plm.play()
-
-            self.camera_trigger_mode_button.setChecked(False)
-            self.hardware_triggering_enabled = False
-                       
-            print('\nAll images acquired')
-            print("\nGrabbed image min and max:", all_images.min(), all_images.max())
-            folder_name = save_super_pixel_images(all_images, 'phase scan')
-            phase_scan_analysor(all_images)
-            self.switch_to_free_streaming()
+            roi_slice = (slice(ymin, ymax), slice(xmin, xmax))
+            zero_phase = find_global_phase_minimum_2(
+            self, plm, camera, 0, 0, 0, 0, rows, cols, images_per_batch=10, roi_slice=roi_slice)
             self.phase_scan_frame_flag = False
                 
         if self.bitpack_enabled:
