@@ -5,14 +5,6 @@ from ampModPhase import amp_mod_phase
 import os
 # from datetime import datetime
 import time
-# from basler_centroid import baslerCentroid
-# import cv2
-# from scipy.interpolate import LinearNDInterpolator
-# from openpyxl import Workbook, load_workbook
-# from openpyxl.utils import get_column_letter
-# import sys
-# from PyQt5.QtWidgets import QApplication, QInputDialog
-# import matplotlib.pyplot as plt
 
 numHolograms = 24
 cols, rows = 1358 , 800
@@ -26,9 +18,6 @@ def simple_beam_maker(self, BeamA_amp, BeamB_amp, BeamB_xtilt_shift, BeamB_ytilt
     beamA_HG_phase, beamA_HG_amplitude = HG_mode(cols, rows, self.user_values[4], self.user_values[5], self.user_values[8], self.user_values[9], self.user_values[12], self.user_values[13])
     beamB_HG_phase, beamB_HG_amplitude = HG_mode(cols, rows, self.user_values[6], self.user_values[7], self.user_values[10], self.user_values[11], self.user_values[14], self.user_values[15])
     
-    #global_amplitudes = np.array([self.user_values[16] , self.user_values[17]])
-    #global_amplitudes = global_amplitudes/ np.max(global_amplitudes)
-
     beamA_amplitude = beamA_HG_amplitude * BeamA_amp
     beamB_amplitude = beamB_HG_amplitude * BeamB_amp
             

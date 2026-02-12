@@ -7,7 +7,7 @@ sys.path.append(os.path.join(scriptDir,"basler python functions" ))
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-
+import pandas as pd
 plt.close('all')
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QPushButton, QLineEdit, QLabel, QFileDialog
@@ -235,6 +235,7 @@ class InteractiveGUI(QWidget):
         self.multibeam_seq_flag = False
         self.slider_flag = False
         self.slider_position = None
+        self.multibeam_overlap_optimiser_flag = False
 
         
         """Set up the GUI layout and widgets."""
@@ -509,6 +510,12 @@ class InteractiveGUI(QWidget):
         self.overlap_button.clicked.connect(self.overlap)
         self.middle_layout.addWidget(self.overlap_button)
 
+        # Run multibeam overlap optimiser
+        self.multibeam_overlap_button = QPushButton('Multibeam Overlap Optimiser', self)
+        self.multibeam_overlap_button.setStyleSheet("background-color: blue; color: orange;")
+        self.multibeam_overlap_button.clicked.connect(self.multibeam_overlap)
+        self.middle_layout.addWidget(self.multibeam_overlap_button)
+
         # Slider button 
         self.slider_button = QPushButton('Slider toggle', self)
         self.slider_button.setStyleSheet("background-color: gray; color: yellow;")
@@ -664,6 +671,10 @@ class InteractiveGUI(QWidget):
         self.overlap_optimiser_flag = True
         self.update_value()
 
+    def multibeam_overlap(self):
+        self.multibeam_overlap_optimiser_flag = True
+        self.update_value()
+
     def slider_UI(self):
         if self.slider_flag:   # safeguard
             return
@@ -701,14 +712,11 @@ class InteractiveGUI(QWidget):
                     cfg = json.load(f)
             except:
                 pass
-
         cfg[beam_key] = path  # e.g. "beam_A_phase_file"
 
         # Save back to disk
         with open(CONFIG_FILE, "w") as f:
             json.dump(cfg, f)
-
-
 
      
     def beam_A_correction(self):
@@ -732,7 +740,6 @@ class InteractiveGUI(QWidget):
         self.beam_A_correction_data = loaded_data
         save_phase_file("beam_A_phase_file", file_path)
 
-        
     
     def beam_B_correction(self):
         """Open a file dialog for the user to load a file."""
@@ -754,7 +761,6 @@ class InteractiveGUI(QWidget):
         
         self.beam_B_correction_data = loaded_data_B
         save_phase_file("beam_B_phase_file", file_path)
-    
     
 
     def update_value(self):
@@ -785,46 +791,15 @@ class InteractiveGUI(QWidget):
         if self.clear_beam_B_correction_flag == True:
             self.beam_B_correction_data = np.zeros_like(beamB_phase_tilt)
  
-
         beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + global_phase_A
         beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + global_phase_B
 
         beamAcomplex = beamA_amplitude * np.exp(1j * beamA_phase)
         beamBcomplex = beamB_amplitude * np.exp(1j * beamB_phase)
 
-
-        beamA2_phase_tilt = generate_phase_tilt(rows, cols, 10.22, 12.26, self.button_states[0], self.button_states[1]) 
-        beamB2_phase_tilt = generate_phase_tilt(rows, cols, 30.0, 12.0, self.button_states[2], self.button_states[3])
-
-        beamA2_HG_phase, beamA2_HG_amplitude = HG_mode(cols, rows, self.user_values[4], self.user_values[5], self.user_values[8], self.user_values[9], self.user_values[12], self.user_values[13])
-        beamB2_HG_phase, beamB2_HG_amplitude = HG_mode(cols, rows, self.user_values[6], self.user_values[7], self.user_values[10], self.user_values[11], self.user_values[14], self.user_values[15])
-        
-        beamA2_amplitude = beamA2_HG_amplitude * global_amplitudes[0] 
-        beamB2_amplitude = beamB2_HG_amplitude * global_amplitudes[1] 
-                
-        global_phase_A2 = (self.user_values[18]/100)*2*np.pi  
-        global_phase_B2 = (self.user_values[19]/100)*2*np.pi 
-
-        if self.clear_beam_A_correction_flag == True:
-            self.beam_A_correction_data = np.zeros_like(beamA_phase_tilt) # clear the correction
-
-        if self.clear_beam_B_correction_flag == True:
-            self.beam_B_correction_data = np.zeros_like(beamB_phase_tilt)
- 
-
-        beamA2_phase = beamA2_phase_tilt - self.beam_A_correction_data + beamA2_HG_phase + global_phase_A2
-        beamB2_phase = beamB2_phase_tilt - self.beam_B_correction_data + beamB2_HG_phase + global_phase_B2
-
-        beamA2complex = beamA2_amplitude * np.exp(1j * beamA2_phase)
-        beamB2complex = beamB2_amplitude * np.exp(1j * beamB2_phase)
-
-        combinedComplex = beamAcomplex + beamBcomplex # + beamA2complex + beamB2complex
-        
+        combinedComplex = beamAcomplex + beamBcomplex 
         amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
-        
         plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
-
-        # self.camera.ExposureTimeAbs.SetValue(self.user_values[20])
 
         self.clear_beam_A_correction_flag = False
         self.clear_beam_B_correction_flag = False
@@ -960,6 +935,78 @@ class InteractiveGUI(QWidget):
             filename = os.path.join(folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
             self.switch_to_free_streaming()
+
+        if self.multibeam_overlap_optimiser_flag:
+            #Currently reads in all the beam parameters from the FLAT .xlsx file and is hard coded to select 1 beam 
+
+            #TODO: implment auto overlap optimiser and write new beam parameters to a new .xlsx
+            #TODO: Loop through all the beams 
+            plm.pause_ui()
+            print('Starting multibeam overlap optimiser')
+            file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT.xlsx'
+            df = pd.read_excel(file_path)
+            beamParameters = df.iloc[:, 3].values 
+            beamParameterBlocks = []
+
+            # Walk through the column in steps of 11 (10 data rows + 1 gap row)
+            for i in range(0, len(beamParameters), 11):  
+                chunk = beamParameters[i:i+10]
+                if len(chunk) == 10 and not np.any(pd.isna(chunk)):
+                    beamParameterBlocks.append(chunk)
+            beamParameterBlocks = np.array(beamParameterBlocks)
+
+            beamNum = 0
+            #print(beamParameterBlocks[beamNum])  # beamParameterBlocks contains parameters for each 49 beams stored in 49 separate arrays
+            print('Currently looking at Beam number ' + str(beamNum))
+            chunk = beamParameterBlocks[beamNum]
+
+            beamA_phase_tilt = generate_phase_tilt(rows, cols, chunk[0], chunk[1], self.button_states[0], self.button_states[1]) 
+            beamB_phase_tilt = generate_phase_tilt(rows, cols, chunk[2], chunk[3], self.button_states[2], self.button_states[3])
+
+            relative_amplitudes = np.array([chunk[7],chunk[8]])
+
+            max_val = np.max(relative_amplitudes)
+            if max_val > 0:
+                relative_amplitudes = relative_amplitudes / max_val
+
+            beamA_amplitude = beamA_HG_amplitude * relative_amplitudes[0]
+            beamB_amplitude = beamB_HG_amplitude * relative_amplitudes[1]
+            global_amplitude = chunk[9]
+            # if abs(global_amplitude) < 1e-6:
+            #     continue
+            
+            relative_phase_A = (chunk[4]/100)*2*np.pi  
+            relative_phase_B = (chunk[5]/100)*2*np.pi
+            #print('Relative Phase Beam A = ' + str(np.round(relative_phase_A,2)))
+
+            global_phase = (chunk[6]/100)*2*np.pi
+
+            beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + relative_phase_A + global_phase
+            beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + relative_phase_B + global_phase
+            beamAcomplex = beamA_amplitude * np.exp(1j * beamA_phase)
+            beamBcomplex = beamB_amplitude * np.exp(1j * beamB_phase)
+            combinedComplex = beamAcomplex + beamBcomplex 
+            amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
+            plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
+
+            plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (rows, cols, numHolograms)).astype(np.float32)
+            plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')                        
+            plm.bitpack_and_insert_gpu(plm_frame, 7)
+            plm.resume_ui()
+            plm.set_frame(7)
+            time.sleep(0.2)
+            plm.play()
+            plm.play()
+
+            self.inputs[0].setText(f"{chunk[0]:.4f}")
+            self.inputs[1].setText(f"{chunk[1]:.4f}")
+            self.inputs[2].setText(f"{chunk[2]:.4f}")
+            self.inputs[3].setText(f"{chunk[3]:.4f}")
+            self.inputs[18].setText(f"{chunk[4]:.1f}")
+            self.inputs[19].setText(f"{chunk[5]:.1f}")
+
+
+            self.multibeam_overlap_optimiser_flag = False 
 
         if self.tilt_mapping_flag:
             print('Running tilt map sequence \n')
