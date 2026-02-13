@@ -285,8 +285,11 @@ def overlap_optimiser(self, plm, camera):
     new_B_x_tilt = self.user_values[2] + -1*(cumulative_tilt_x +cumulative_tilt_x_zoom)
     new_B_y_tilt = self.user_values[3] + (cumulative_tilt_y +cumulative_tilt_y_zoom)
 
-    print('Beam B x tilt = ' + str(self.user_values[2] + -1*(cumulative_tilt_x +cumulative_tilt_x_zoom)))
-    print('Beam B y tilt = ' + str(self.user_values[3] + (cumulative_tilt_y +cumulative_tilt_y_zoom)))
+    print('Beam A x tilt = ' + str(np.round(self.user_values[0],3)))
+    print('Beam A y tilt = ' + str(np.round(self.user_values[1], 3)))
+
+    print('Beam B x tilt = ' + str(np.round(new_B_x_tilt,3)))
+    print('Beam B y tilt = ' + str(np.round(new_B_y_tilt, 3)))
 
 
     roi_slice = (slice(ymin, ymax), slice(xmin, xmax))

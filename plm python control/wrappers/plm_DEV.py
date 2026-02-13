@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import pandas as pd
+import shutil
+from scipy.ndimage import label, center_of_mass  
 plt.close('all')
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QPushButton, QLineEdit, QLabel, QFileDialog
@@ -236,6 +238,7 @@ class InteractiveGUI(QWidget):
         self.slider_flag = False
         self.slider_position = None
         self.multibeam_overlap_optimiser_flag = False
+        self.multibeam_flatness_optimiser_flag = False
 
         
         """Set up the GUI layout and widgets."""
@@ -516,6 +519,12 @@ class InteractiveGUI(QWidget):
         self.multibeam_overlap_button.clicked.connect(self.multibeam_overlap)
         self.middle_layout.addWidget(self.multibeam_overlap_button)
 
+        # Run multibeam flatness optimiser
+        self.multibeam_flatness_button = QPushButton('Multibeam Flatness Optimiser', self)
+        self.multibeam_flatness_button.setStyleSheet("background-color: magenta; color: white;")
+        self.multibeam_flatness_button.clicked.connect(self.multibeam_flatness)
+        self.middle_layout.addWidget(self.multibeam_flatness_button)
+
         # Slider button 
         self.slider_button = QPushButton('Slider toggle', self)
         self.slider_button.setStyleSheet("background-color: gray; color: yellow;")
@@ -675,6 +684,11 @@ class InteractiveGUI(QWidget):
         self.multibeam_overlap_optimiser_flag = True
         self.update_value()
 
+    def multibeam_flatness(self):
+        self.multibeam_flatness_optimiser_flag = True
+        self.update_value()
+
+
     def slider_UI(self):
         if self.slider_flag:   # safeguard
             return
@@ -811,7 +825,7 @@ class InteractiveGUI(QWidget):
 
         if self.grab_50_flag:
             print('Grab and save 50 images using current plm config')
-            folder_name, offline_folder_name = grab_50_images(self.camera, 'grab50_test')
+            folder_name, offline_folder_name = grab_50_images(self.camera, 'grab50')
             filename = os.path.join(folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
 
@@ -937,10 +951,6 @@ class InteractiveGUI(QWidget):
             self.switch_to_free_streaming()
 
         if self.multibeam_overlap_optimiser_flag:
-            #Currently reads in all the beam parameters from the FLAT .xlsx file and is hard coded to select 1 beam 
-
-            #TODO: implment auto overlap optimiser and write new beam parameters to a new .xlsx
-            #TODO: Loop through all the beams 
             plm.pause_ui()
             print('Starting multibeam overlap optimiser')
             file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT.xlsx'
@@ -955,58 +965,201 @@ class InteractiveGUI(QWidget):
                     beamParameterBlocks.append(chunk)
             beamParameterBlocks = np.array(beamParameterBlocks)
 
-            beamNum = 0
-            #print(beamParameterBlocks[beamNum])  # beamParameterBlocks contains parameters for each 49 beams stored in 49 separate arrays
-            print('Currently looking at Beam number ' + str(beamNum))
-            chunk = beamParameterBlocks[beamNum]
+            for beamNum in range(49):
+                # beamParameterBlocks contains parameters for each 49 beams stored in 49 separate arrays
+                print('Currently looking at Beam number ' + str(beamNum+1))
+                chunk = beamParameterBlocks[beamNum]
 
-            beamA_phase_tilt = generate_phase_tilt(rows, cols, chunk[0], chunk[1], self.button_states[0], self.button_states[1]) 
-            beamB_phase_tilt = generate_phase_tilt(rows, cols, chunk[2], chunk[3], self.button_states[2], self.button_states[3])
+                chunk[7] = 0.75 # Hoping all Beams will need a 0.75:1 amplitude ratio between Beams A and B
 
-            relative_amplitudes = np.array([chunk[7],chunk[8]])
+                beamA_phase_tilt = generate_phase_tilt(rows, cols, chunk[0], chunk[1], self.button_states[0], self.button_states[1]) 
+                beamB_phase_tilt = generate_phase_tilt(rows, cols, chunk[2], chunk[3], self.button_states[2], self.button_states[3])
 
-            max_val = np.max(relative_amplitudes)
-            if max_val > 0:
-                relative_amplitudes = relative_amplitudes / max_val
+                relative_amplitudes = np.array([chunk[7],chunk[8]])
 
-            beamA_amplitude = beamA_HG_amplitude * relative_amplitudes[0]
-            beamB_amplitude = beamB_HG_amplitude * relative_amplitudes[1]
-            global_amplitude = chunk[9]
-            # if abs(global_amplitude) < 1e-6:
-            #     continue
-            
-            relative_phase_A = (chunk[4]/100)*2*np.pi  
-            relative_phase_B = (chunk[5]/100)*2*np.pi
-            #print('Relative Phase Beam A = ' + str(np.round(relative_phase_A,2)))
+                max_val = np.max(relative_amplitudes)
+                if max_val > 0:
+                    relative_amplitudes = relative_amplitudes / max_val
 
-            global_phase = (chunk[6]/100)*2*np.pi
+                beamA_amplitude = beamA_HG_amplitude * relative_amplitudes[0]
+                beamB_amplitude = beamB_HG_amplitude * relative_amplitudes[1]
+                global_amplitude = chunk[9]
+                # if abs(global_amplitude) < 1e-6:
+                #     continue
+                
+                relative_phase_A = (chunk[4]/100)*2*np.pi  
+                relative_phase_B = (chunk[5]/100)*2*np.pi
+                #print('Relative Phase Beam A = ' + str(np.round(relative_phase_A,2)))
 
-            beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + relative_phase_A + global_phase
-            beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + relative_phase_B + global_phase
-            beamAcomplex = beamA_amplitude * np.exp(1j * beamA_phase)
-            beamBcomplex = beamB_amplitude * np.exp(1j * beamB_phase)
-            combinedComplex = beamAcomplex + beamBcomplex 
-            amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
+                global_phase = (chunk[6]/100)*2*np.pi
+
+                beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + relative_phase_A + global_phase
+                beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + relative_phase_B + global_phase
+                beamAcomplex = beamA_amplitude * np.exp(1j * beamA_phase)
+                beamBcomplex = beamB_amplitude * np.exp(1j * beamB_phase)
+                combinedComplex = beamAcomplex + beamBcomplex 
+                amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
+                plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
+
+                plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (rows, cols, numHolograms)).astype(np.float32)
+                plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')                        
+                plm.bitpack_and_insert_gpu(plm_frame, 2)
+                plm.resume_ui()
+                plm.set_frame(2)
+                time.sleep(0.2)
+                plm.play()
+                plm.play()
+
+                # Update internal values of tilt and phase
+                self.user_values[0] = chunk[0]
+                self.user_values[1] = chunk[1]
+                self.user_values[2] = chunk[2]
+                self.user_values[3] = chunk[3]
+
+                self.user_values[16] = chunk[7]
+                self.inputs[16].setText(f"{self.user_values[16]:.2f}")
+
+                self.user_values[18] = chunk[4]
+                self.user_values[19] = chunk[5]
+
+                # Update GUI for display
+                for i in range(4):
+                    self.inputs[i].setText(f"{self.user_values[i]:.4f}")
+                self.inputs[18].setText(f"{chunk[4]:.1f}")
+                self.inputs[19].setText(f"{chunk[5]:.1f}")
+
+                print('Attempting to optimise overlap of Beam B with Beam A')
+                newBxTilt , newByTilt , zero_phase = overlap_optimiser(self, plm, camera)
+                # Update the GUI text boxes with the new values
+
+                chunk[2] = newBxTilt
+                chunk[3] = newByTilt
+                chunk[4] = zero_phase
+
+                # Update internal values of tilt and phase
+                self.user_values[2] = chunk[2]
+                self.user_values[3] = chunk[3]
+                self.user_values[18] = chunk[4]
+
+                # Update GUI for display
+                for i in range(4):
+                    self.inputs[i].setText(f"{self.user_values[i]:.4f}")
+                self.inputs[18].setText(f"{chunk[4]:.1f}")
+
+                file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT_optimised.xlsx'
+                df_opt = pd.read_excel(file_path, header=None, usecols="A:D")
+
+                total_beams = 49
+                rows_per_beam = 11
+                required_rows = total_beams * rows_per_beam
+                df_opt = df_opt.reindex(range(required_rows))
+                start_index = 1 + beamNum * 11   # zero-indexed beamNum
+                df_opt.iloc[start_index:start_index+10, 3] = chunk
+                df_opt.to_excel(file_path, index=False, header=False)
+
+            self.multibeam_overlap_optimiser_flag = False
+
+        if self.multibeam_flatness_optimiser_flag:
+            from numba import njit
+
+            @njit
+            def add_beams(acc, A_amp, A_phase, B_amp, B_phase, global_amp):
+                rows, cols = A_amp.shape
+                for i in range(rows):
+                    for j in range(cols):
+                        a = A_amp[i, j] * np.cos(A_phase[i, j]) + 1j * A_amp[i, j] * np.sin(A_phase[i, j])
+                        b = B_amp[i, j] * np.cos(B_phase[i, j]) + 1j * B_amp[i, j] * np.sin(B_phase[i, j])
+                        acc[i, j] += global_amp * (a + b)
+
+            plm.pause_ui()
+            print('\nEntering multibeam mode')
+            file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT_optimised.xlsx'
+            df = pd.read_excel(file_path) 
+            beamParameters = df.iloc[:, 3].values #.dropna().tolist() 
+            beamParameterBlocks = []
+            # Walk through the column in steps of 11 (10 data rows + 1 gap row)
+            for i in range(0, len(beamParameters), 11):  
+                chunk = beamParameters[i:i+10]
+                if len(chunk) == 10 and not np.any(pd.isna(chunk)):
+                    beamParameterBlocks.append(chunk)
+
+            beamParameterBlocks = np.array(beamParameterBlocks)
+                    
+            beamA_HG_phase, beamA_HG_amplitude = HG_mode(cols, rows, self.user_values[4], self.user_values[5], self.user_values[8], self.user_values[9], self.user_values[12], self.user_values[13])
+            beamB_HG_phase, beamB_HG_amplitude = HG_mode(cols, rows, self.user_values[6], self.user_values[7], self.user_values[10], self.user_values[11], self.user_values[14], self.user_values[15])
+
+            finalCombined = np.zeros((rows, cols), dtype=np.complex128)
+            for i, chunk in enumerate(beamParameterBlocks):
+                print('Loading parameters for Beam: ' + str(int(i)))
+
+                beamA_phase_tilt = generate_phase_tilt(rows, cols, chunk[0], chunk[1], self.button_states[0], self.button_states[1]) 
+                beamB_phase_tilt = generate_phase_tilt(rows, cols, chunk[2], chunk[3], self.button_states[2], self.button_states[3])
+
+                relative_amplitudes = np.array([chunk[7],chunk[8]])
+
+                max_val = np.max(relative_amplitudes)
+                if max_val > 0:
+                    relative_amplitudes = relative_amplitudes / max_val
+
+                beamA_amplitude = beamA_HG_amplitude * relative_amplitudes[0]
+                beamB_amplitude = beamB_HG_amplitude * relative_amplitudes[1]
+                global_amplitude = chunk[9]
+                if abs(global_amplitude) < 1e-6:
+                    continue
+                
+                relative_phase_A = (chunk[4]/100)*2*np.pi  
+                relative_phase_B = (chunk[5]/100)*2*np.pi
+                #print('Relative Phase Beam A = ' + str(np.round(relative_phase_A,2)))
+
+                global_phase = (chunk[6]/100)*2*np.pi
+
+                beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + relative_phase_A + global_phase
+                beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + relative_phase_B + global_phase
+
+                add_beams(finalCombined, beamA_amplitude, beamA_phase, beamB_amplitude, beamB_phase, global_amplitude)
+                finalCombined[np.abs(finalCombined) < 1e-6] = 0
+
+
+            print('\nMultibeam file path = ' + str(file_path))
+            amplitude_modulated_combined_phase = amp_mod_phase(finalCombined) 
             plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
-
-            plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (rows, cols, numHolograms)).astype(np.float32)
-            plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')                        
-            plm.bitpack_and_insert_gpu(plm_frame, 7)
+            plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (M, N, numHolograms)).astype(np.float32)
+            plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')
+                                        
+            plm.bitpack_and_insert_gpu(plm_frame, 1)
             plm.resume_ui()
-            plm.set_frame(7)
+            plm.set_frame(1)
             time.sleep(0.2)
             plm.play()
             plm.play()
+            move_slider_to_not_attenuator(self)
 
-            self.inputs[0].setText(f"{chunk[0]:.4f}")
-            self.inputs[1].setText(f"{chunk[1]:.4f}")
-            self.inputs[2].setText(f"{chunk[2]:.4f}")
-            self.inputs[3].setText(f"{chunk[3]:.4f}")
-            self.inputs[18].setText(f"{chunk[4]:.1f}")
-            self.inputs[19].setText(f"{chunk[5]:.1f}")
+            print('Grab and save 50 images using current plm config')
+            folder_name, offline_folder_name = grab_50_images(self.camera, 'grab50')
 
+            from find49Centroids import find_49_centroids
+            centroids , roi_sums = find_49_centroids(folder_name)
+            
+            new_global_amplitudes=[]
+            for idx in range(49):
+                current_beam_amplitude = beamParameterBlocks[idx][9]
+                nga = current_beam_amplitude * (np.mean(roi_sums) / roi_sums[idx])**0.5
+                new_global_amplitudes.append(nga)
+                beamParameterBlocks[idx][9] = nga
 
-            self.multibeam_overlap_optimiser_flag = False 
+            total_beams = len(beamParameterBlocks)
+            rows_per_beam = 11
+            required_rows = total_beams * rows_per_beam
+            df = df.reindex(range(required_rows))  # <-- ensures slice exists
+
+            for beamNum, chunk in enumerate(beamParameterBlocks):
+                start_index = 1 + beamNum * rows_per_beam  # leave first row empty
+                df.iloc[start_index:start_index + len(chunk), 3] = chunk.tolist()  # convert to list for safety
+
+            df.to_excel(file_path, index=False, header=False)
+            
+            self.multibeam_flatness_optimiser_flag = False
+
 
         if self.tilt_mapping_flag:
             print('Running tilt map sequence \n')

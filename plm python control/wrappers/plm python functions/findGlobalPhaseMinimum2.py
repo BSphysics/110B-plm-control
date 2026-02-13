@@ -141,6 +141,22 @@ def find_global_phase_minimum_2(
     print(f"\nOptimal global phase (%) = {optimal_phase:.2f}")
 
     # -------------------------------------------------
+# FINAL MEASUREMENT AT OPTIMAL PHASE AND π SHIFT
+# -------------------------------------------------
+    # Intensity at optimal phase
+    I_opt = measure_intensity(optimal_phase)
+
+    # Convert π radians to % scale (π = 50% of 0–100%)
+    pi_shift_phase = (optimal_phase + 50) % 100  # wrap around 100%
+    I_pi = measure_intensity(pi_shift_phase)
+
+    # Compute ratio
+    ratio = (I_opt / I_pi)*100 if I_pi != 0 else np.inf
+
+    print(f"\nBeam extinction percentage = {ratio:.1f}")
+
+
+    # -------------------------------------------------
     # Restore free streaming
     # -------------------------------------------------
     print('\nSwitching back to free streaming')
