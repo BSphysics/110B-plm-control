@@ -10,8 +10,6 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-plt.close('all')
-
 from skimage.feature import peak_local_max
 from scipy.ndimage import gaussian_filter
 

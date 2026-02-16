@@ -1147,17 +1147,29 @@ class InteractiveGUI(QWidget):
                 new_global_amplitudes.append(nga)
                 beamParameterBlocks[idx][9] = nga
 
-            total_beams = len(beamParameterBlocks)
-            rows_per_beam = 11
-            required_rows = total_beams * rows_per_beam
-            df = df.reindex(range(required_rows))  # <-- ensures slice exists
+            from openpyxl import load_workbook
 
-            for beamNum, chunk in enumerate(beamParameterBlocks):
-                start_index = 1 + beamNum * rows_per_beam  # leave first row empty
-                df.iloc[start_index:start_index + len(chunk), 3] = chunk.tolist()  # convert to list for safety
+            # 1. Load your existing file
+            wb = load_workbook(file_path)
+            ws = wb.active  # This targets the currently active sheet
 
-            df.to_excel(file_path, index=False, header=False)
-            
+            # 2. Starting point
+            # Excel is 1-indexed. Row 1 is empty, so we start at Row 2.
+            current_excel_row = 2 
+
+            for chunk in beamParameterBlocks:
+                # chunk is your 10 values for one beam
+                for value in chunk:
+                    # column=4 is Column D
+                    ws.cell(row=current_excel_row, column=4).value = value
+                    current_excel_row += 1
+                
+                # After writing 10 values, skip one row for the gap
+                current_excel_row += 1
+
+            # 3. Save it
+            wb.save(file_path)
+                        
             self.multibeam_flatness_optimiser_flag = False
 
 

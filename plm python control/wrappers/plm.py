@@ -7,15 +7,15 @@ sys.path.append(os.path.join(scriptDir,"basler python functions" ))
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-#gs = GridSpec(1, 2, width_ratios=[2, 1])
-
+import pandas as pd
+import shutil
+from scipy.ndimage import label, center_of_mass  
 plt.close('all')
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QPushButton, QLineEdit, QLabel, QFileDialog
 )
 
 from PyQt5.QtCore import QTimer, QSettings
-
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib
 matplotlib.use('Agg')
@@ -32,13 +32,25 @@ from saveSuperPixelImages import save_super_pixel_images
 from wavefrontCorrection import wavefront_correction
 from phaseScanningFrameGenerator import phase_scanning_frame_generator
 from ampRampFrameGenerator import amp_ramp_frame_generator
-from phaseScanAnalysor import phase_scan_analysor
+#from phaseScanAnalysor import phase_scan_analysor
+from findGlobalPhaseMinimum2 import find_global_phase_minimum_2
 from grab50Images import grab_50_images
+from tiltMapping import tilt_mapping
+from overlapOptimiser import overlap_optimiser
+from slider import slider
+from moveSliderToNotAttenuator import move_slider_to_not_attenuator
+
+from cameraUtils import enable_hardware_trigger
+from loadLastPhaseCorrections import load_last_phase_corrections
+from savePhaseFile import save_phase_file
+
 
 from applyDarkTheme import apply_dark_theme
 from applyDarkPlotTheme import apply_dark_plot_theme
 
 from polMeasure import pol_measure
+from loadMultibeamData import load_multibeam_data
+from multiBeamSequence import multi_beam_seq
 
 import ctypes
 from PLMController import PLMController 
@@ -68,7 +80,7 @@ camera.Open()
 print("Found Basler ", camera.GetDeviceInfo().GetModelName(), 'camera')
 
 #----------------------------------Config ROI parameters
-exposureTime = 200
+exposureTime = 2000
 timing_data=[]
 #-------------------------------------------------------
 # camConfig(camera, image_height, image_width, int(offset_x-image_width/2),int(offset_y - image_height/2), exposureTime)
@@ -119,9 +131,23 @@ plm.set_phase_map((phase_map_order))
 time.sleep(1)
 plm.play()
 plm.play()
+
+import json
+CONFIG_FILE = "beam_config.json"
 class InteractiveGUI(QWidget):
     def __init__(self):
         super().__init__()
+
+        # Force digital trigger line LOW at startup
+        try:
+            init_task = nidaqmx.Task()
+            init_task.do_channels.add_do_chan("Dev1/port0/line0")
+            init_task.write(False)   # Set line LOW
+            init_task.stop()
+            init_task.close()
+        except Exception as e:
+            print("Warning: Failed to initialize trigger line low:", e)
+
         self.settings = QSettings("plm_GUI")
         self.init_ui()
 
@@ -129,9 +155,49 @@ class InteractiveGUI(QWidget):
         self.timer.timeout.connect(self.update_camera_feed)
         self.timer.start(100)  # Update every 100ms
         self.camera = camera
+        self.ELLser = None
+        self.serial_port = 'COM4'  # Change this to your actual COM port
+        self.baudrate = 9600
+
+        # Load saved corrections
+        load_last_phase_corrections(
+            CONFIG_FILE,
+            self._import_loaded_phase
+        )
+
+    def _load_phase_file(self, path):
+        if path.endswith(".npy"):
+            return np.load(path)
+        elif path.endswith(".csv"):
+            return np.loadtxt(path, delimiter=",")
+        else:
+            return np.loadtxt(path)
+
+    def _import_loaded_phase(self, beam_name, path):
+        data = self._load_phase_file(path)
+
+        if beam_name == "A":
+            self.beam_A_correction_data = data
+        elif beam_name == "B":
+            self.beam_B_correction_data = data
+
+    def switch_to_free_streaming(self):
+        """Return camera + PLM to free-running live streaming mode."""
+        print('\nSwitching back to free streaming')
+        self.camera.TriggerMode.SetValue("Off")
+        self.camera.OffsetX.SetValue(0)
+        self.camera.OffsetY.SetValue(0)
+        self.camera.Width.SetValue(512)
+        self.camera.Height.SetValue(512)
+        self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+        plm.set_frame(0)
+        time.sleep(0.5)
+        plm.play()
+        plm.play()
 
     def init_ui(self):
         # apply_dark_theme(self)
+        self.camera = camera
         self.zoom_enabled = False  # Tracks zoom state for phase map before it is sent to plm
         self.bitpack_enabled = False # Don't bitpack until ready
         self.img_zoom_enabled = False  # Flag to track whether zoom is active or not
@@ -142,6 +208,12 @@ class InteractiveGUI(QWidget):
         self.zoom_counter = 0 
         self.beam_A_SP_scan_enabled= False
         self.beam_B_SP_scan_enabled= False
+
+        self.countOfImagesToGrab = None
+        self.image_height = None
+        self.image_width = None
+        self.offset_x = None
+        self.offset_y = None
 
         self.clear_beam_A_correction_flag = False
         self.clear_beam_B_correction_flag = False
@@ -158,6 +230,15 @@ class InteractiveGUI(QWidget):
         
         self.xdata = collections.deque(maxlen=200)  
         self.ydata = collections.deque(maxlen=200)
+
+        self.multibeam_flag = False
+        self.tilt_mapping_flag = False
+        self.overlap_optimiser_flag = False
+        self.multibeam_seq_flag = False
+        self.slider_flag = False
+        self.slider_position = None
+        self.multibeam_overlap_optimiser_flag = False
+        self.multibeam_flatness_optimiser_flag = False
 
         
         """Set up the GUI layout and widgets."""
@@ -368,6 +449,8 @@ class InteractiveGUI(QWidget):
 
          # Generate plm frame (24 phase maps) that scan global phase and record images using HW triggering button
         self.global_phase_scan_button = QPushButton('Global phase scan frame', self)
+        self.global_phase_scan_button.setStyleSheet(
+            "background-color: #1ABC9C; color: white; font-weight: bold;")
         self.global_phase_scan_button.clicked.connect(self.global_phase_scan)
         self.middle_layout.addWidget(self.global_phase_scan_button)
 
@@ -405,8 +488,62 @@ class InteractiveGUI(QWidget):
         self.grab_50_button = QPushButton('Grab 50 images', self)
         self.grab_50_button.clicked.connect(self.grab_50)
         self.middle_layout.addWidget(self.grab_50_button)  
+
+        # Load multibeam data button
+        self.multibeam_button = QPushButton('Load multibeam parameters', self)
+        self.multibeam_button.setStyleSheet("background-color: green; color: white;")
+        self.multibeam_button.clicked.connect(self.multibeam)
+        self.middle_layout.addWidget(self.multibeam_button)  
+
+        # Run multibeam sequence button
+        self.multibeam_seq_button = QPushButton('Run multibeam sequence', self)
+        self.multibeam_seq_button.setStyleSheet("background-color: orange; color: white;")
+        self.multibeam_seq_button.clicked.connect(self.multibeam_seq)
+        self.middle_layout.addWidget(self.multibeam_seq_button) 
+
+        # Run tilt mapping sequence
+        self.tilt_map_button = QPushButton('Run tilt map sequence', self)
+        self.tilt_map_button.setStyleSheet("background-color: blue; color: white;")
+        self.tilt_map_button.clicked.connect(self.tilt_map)
+        self.middle_layout.addWidget(self.tilt_map_button) 
+
+        # Run overlap optimiser
+        self.overlap_button = QPushButton('Overlap Optimiser', self)
+        self.overlap_button.setStyleSheet("background-color: yellow; color: red;")
+        self.overlap_button.clicked.connect(self.overlap)
+        self.middle_layout.addWidget(self.overlap_button)
+
+        # Run multibeam overlap optimiser
+        self.multibeam_overlap_button = QPushButton('Multibeam Overlap Optimiser', self)
+        self.multibeam_overlap_button.setStyleSheet("background-color: blue; color: orange;")
+        self.multibeam_overlap_button.clicked.connect(self.multibeam_overlap)
+        self.middle_layout.addWidget(self.multibeam_overlap_button)
+
+        # Run multibeam flatness optimiser
+        self.multibeam_flatness_button = QPushButton('Multibeam Flatness Optimiser', self)
+        self.multibeam_flatness_button.setStyleSheet("background-color: magenta; color: white;")
+        self.multibeam_flatness_button.clicked.connect(self.multibeam_flatness)
+        self.middle_layout.addWidget(self.multibeam_flatness_button)
+
+        # Slider button 
+        self.slider_button = QPushButton('Slider toggle', self)
+        self.slider_button.setStyleSheet("background-color: gray; color: yellow;")
+        self.slider_button.clicked.connect(self.slider_UI)
+        self.middle_layout.addWidget(self.slider_button)
         
         self.middle_layout.addStretch()
+
+        label = QLabel("Camera acquisition time")
+        input_box = QLineEdit(self)
+        input_box.setText("0.0")
+        input_box.setMaximumWidth(50)
+        input_box.textChanged.connect(self.update_camera_acquisition_time)
+
+        self.inputs.append(input_box)
+        hbox = QHBoxLayout()
+        hbox.addWidget(label)
+        hbox.addWidget(input_box)
+        self.middle_layout.addLayout(hbox)
 
         self.saveButton = QPushButton("Save and Close")
         self.saveButton.setStyleSheet("background-color: red; color: white;")
@@ -527,11 +664,74 @@ class InteractiveGUI(QWidget):
         self.grab_50_flag = True
         self.update_value()
 
+    def multibeam(self):
+        self.multibeam_flag = True
+        self.update_value()
+
+    def multibeam_seq(self):
+        self.multibeam_seq_flag = True
+        self.update_value()
+
+    def tilt_map(self):
+        self.tilt_mapping_flag = True
+        self.update_value()
+
+    def overlap(self):
+        self.overlap_optimiser_flag = True
+        self.update_value()
+
+    def multibeam_overlap(self):
+        self.multibeam_overlap_optimiser_flag = True
+        self.update_value()
+
+    def multibeam_flatness(self):
+        self.multibeam_flatness_optimiser_flag = True
+        self.update_value()
+
+
+    def slider_UI(self):
+        if self.slider_flag:   # safeguard
+            return
+        self.slider_flag = True
+        QTimer.singleShot(0, self.update_value)  # avoid recursion
+
+    def update_slider_button_style(self):
+        if self.slider_position == "Attenuator":
+            self.slider_button.setStyleSheet("background-color: purple; color: yellow;")
+        else:
+            self.slider_button.setStyleSheet("background-color: green; color: white;")
+
+    def update_camera_acquisition_time(self):
+        try:
+            value = float(self.inputs[20].text())
+            if value < 100:
+                value = 100
+            print(f"Updated camera acquisition time: {value}")
+            self.camera.ExposureTimeAbs.SetValue(value)
+        except ValueError:
+            print("Invalid input — not a float")
+
     from PyQt5.QtGui import QPixmap
 
     def save_gui_screenshot(widget, filename):
         pixmap = widget.grab()
         pixmap.save(filename)
+
+    def save_phase_file(beam_key, path):
+    # Load existing config (if any)
+        cfg = {}
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r") as f:
+                    cfg = json.load(f)
+            except:
+                pass
+        cfg[beam_key] = path  # e.g. "beam_A_phase_file"
+
+        # Save back to disk
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(cfg, f)
+
      
     def beam_A_correction(self):
         """Open a file dialog for the user to load a file."""
@@ -552,7 +752,8 @@ class InteractiveGUI(QWidget):
                 return
         
         self.beam_A_correction_data = loaded_data
-        
+        save_phase_file("beam_A_phase_file", file_path)
+
     
     def beam_B_correction(self):
         """Open a file dialog for the user to load a file."""
@@ -572,8 +773,10 @@ class InteractiveGUI(QWidget):
                 print("Unsupported file format")
                 return
         
-        self.beam_B_correction_data = loaded_data_B    
+        self.beam_B_correction_data = loaded_data_B
+        save_phase_file("beam_B_phase_file", file_path)
     
+
     def update_value(self):
         
         try:
@@ -602,17 +805,14 @@ class InteractiveGUI(QWidget):
         if self.clear_beam_B_correction_flag == True:
             self.beam_B_correction_data = np.zeros_like(beamB_phase_tilt)
  
-
         beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + global_phase_A
         beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + global_phase_B
 
         beamAcomplex = beamA_amplitude * np.exp(1j * beamA_phase)
         beamBcomplex = beamB_amplitude * np.exp(1j * beamB_phase)
 
-        combinedComplex = beamAcomplex + beamBcomplex
-        
+        combinedComplex = beamAcomplex + beamBcomplex 
         amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
-        
         plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
 
         self.clear_beam_A_correction_flag = False
@@ -625,13 +825,361 @@ class InteractiveGUI(QWidget):
 
         if self.grab_50_flag:
             print('Grab and save 50 images using current plm config')
-            folder_name, offline_folder_name = grab_50_images(self.camera, 'grab50_test')
+            folder_name, offline_folder_name = grab_50_images(self.camera, 'grab50')
             filename = os.path.join(folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
 
             filename = os.path.join(offline_folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
             self.grab_50_flag = False
+
+        if self.multibeam_flag:
+            plm.pause_ui()
+            print('Entering multibeam mode - hold on to your hats!')
+            combinedComplex, multibeam_file_path = load_multibeam_data(self)
+            print('Multibeam file path = ' + str(multibeam_file_path))
+            amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
+            plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
+            self.multibeam_flag = False
+            plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (M, N, numHolograms)).astype(np.float32)
+            plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')
+                                        
+            plm.bitpack_and_insert_gpu(plm_frame, 1)
+            plm.resume_ui()
+            plm.set_frame(1)
+            time.sleep(0.2)
+            plm.play()
+            plm.play()
+
+            move_slider_to_not_attenuator(self)
+
+        if self.multibeam_seq_flag:
+            plm.pause_ui()
+            print('Running selected multiBeam squence with HW triggering')
+            multi_beam_seq_frame = multi_beam_seq(self)
+            self.multibeam_seq_flag = False
+            plm.bitpack_and_insert_gpu(multi_beam_seq_frame, 66)
+            plm.resume_ui()
+            plm.play()
+            plm.play()
+            time.sleep(0.2)
+
+            # Here we setup the hardware triggered acquistion at 720 Hz (using PLM triggers) but remember that the Hardware triggered
+            #button has to be pressed before pressing the multibeam sequence button
+            time.sleep(0.1) 
+            print("Sending TTL to Line 3...")
+            self.task.start()  # Basler acquisition start trigger
+            self.task.write(True)  
+            time.sleep(0.05)  
+            self.task.write(False)  
+            time.sleep(0.05)  
+            self.task.stop()
+
+            grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+
+            #Hardware triggered acquistion starts here
+            if grabResult.GrabSucceeded():
+                print("TTL trigger received on Line 03.")
+                grabResult.Release() 
+            else:
+                print("Timeout waiting for the first image.")
+                self.camera.StopGrabbing()  
+                self.camera.Close()
+            
+            self.camera.StopGrabbing()
+            all_images = np.zeros((800, 128, 128), dtype=np.uint8)
+
+            idx = 0 
+            self.camera.MaxNumBuffer.Value = 25
+            self.camera.TriggerSource.SetValue("Line1")  
+            self.camera.TriggerSelector.SetValue("FrameStart")
+            self.camera.TriggerMode.SetValue("On")  # Enable per-frame trigger
+            
+            self.camera.TriggerActivation.SetValue("RisingEdge")
+            image_height = 128
+            image_width = 128
+            self.camera.Width.SetValue(image_width)
+            self.camera.Height.SetValue(image_height)
+
+            offset_x = 208
+            offset_y = 128            
+            self.camera.OffsetX.SetValue(offset_x)
+            self.camera.OffsetY.SetValue(offset_y)
+
+            self.camera.ExposureTimeAbs.SetValue(200)
+            self.camera.StartGrabbingMax(800)
+            last_frame_number = None
+
+            while self.camera.IsGrabbing():
+                grab_start = time.perf_counter_ns()  # Start timing grab
+                grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+                grab_end = time.perf_counter_ns()
+                if grabResult.GrabSucceeded():
+                    frame_number = grabResult.GetBlockID()
+                    
+                    img = grabResult.Array
+                    all_images[idx]=img                   
+                else:
+                    print("Error: ", grabResult.ErrorCode, grabResult.ErrorDescription)
+                
+                grab_time_us = (grab_end - grab_start)
+                timing_data.append(grab_time_us)
+                
+                frame_number = grabResult.GetBlockID()
+                
+                if last_frame_number is not None and frame_number != last_frame_number + 1:
+                    missed_triggers = frame_number - last_frame_number - 1
+                    print(f"Warning: Missed {missed_triggers} trigger(s)!")
+                        
+                last_frame_number = frame_number  # Update last frame number
+                grabResult.Release()
+                idx=idx+1
+
+                if idx==5:
+                    plm.set_frame(66)
+                    print('Multibeam seq started')
+                    plm.play()
+                    plm.play()
+
+            self.camera_trigger_mode_button.setChecked(False)
+            self.hardware_triggering_enabled = False
+                       
+            print('\nAll images acquired')
+            folder_name = save_super_pixel_images(all_images, '_multibeam_seq')
+            filename = os.path.join(folder_name, 'GUI screenshot.png')
+            self.save_gui_screenshot(filename)
+            self.switch_to_free_streaming()
+
+        if self.multibeam_overlap_optimiser_flag:
+            plm.pause_ui()
+            print('Starting multibeam overlap optimiser')
+            file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT.xlsx'
+            df = pd.read_excel(file_path)
+            beamParameters = df.iloc[:, 3].values 
+            beamParameterBlocks = []
+
+            # Walk through the column in steps of 11 (10 data rows + 1 gap row)
+            for i in range(0, len(beamParameters), 11):  
+                chunk = beamParameters[i:i+10]
+                if len(chunk) == 10 and not np.any(pd.isna(chunk)):
+                    beamParameterBlocks.append(chunk)
+            beamParameterBlocks = np.array(beamParameterBlocks)
+
+            for beamNum in range(49):
+                # beamParameterBlocks contains parameters for each 49 beams stored in 49 separate arrays
+                print('Currently looking at Beam number ' + str(beamNum+1))
+                chunk = beamParameterBlocks[beamNum]
+
+                chunk[7] = 0.75 # Hoping all Beams will need a 0.75:1 amplitude ratio between Beams A and B
+
+                beamA_phase_tilt = generate_phase_tilt(rows, cols, chunk[0], chunk[1], self.button_states[0], self.button_states[1]) 
+                beamB_phase_tilt = generate_phase_tilt(rows, cols, chunk[2], chunk[3], self.button_states[2], self.button_states[3])
+
+                relative_amplitudes = np.array([chunk[7],chunk[8]])
+
+                max_val = np.max(relative_amplitudes)
+                if max_val > 0:
+                    relative_amplitudes = relative_amplitudes / max_val
+
+                beamA_amplitude = beamA_HG_amplitude * relative_amplitudes[0]
+                beamB_amplitude = beamB_HG_amplitude * relative_amplitudes[1]
+                global_amplitude = chunk[9]
+                # if abs(global_amplitude) < 1e-6:
+                #     continue
+                
+                relative_phase_A = (chunk[4]/100)*2*np.pi  
+                relative_phase_B = (chunk[5]/100)*2*np.pi
+                #print('Relative Phase Beam A = ' + str(np.round(relative_phase_A,2)))
+
+                global_phase = (chunk[6]/100)*2*np.pi
+
+                beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + relative_phase_A + global_phase
+                beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + relative_phase_B + global_phase
+                beamAcomplex = beamA_amplitude * np.exp(1j * beamA_phase)
+                beamBcomplex = beamB_amplitude * np.exp(1j * beamB_phase)
+                combinedComplex = beamAcomplex + beamBcomplex 
+                amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
+                plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
+
+                plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (rows, cols, numHolograms)).astype(np.float32)
+                plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')                        
+                plm.bitpack_and_insert_gpu(plm_frame, 2)
+                plm.resume_ui()
+                plm.set_frame(2)
+                time.sleep(0.2)
+                plm.play()
+                plm.play()
+
+                # Update internal values of tilt and phase
+                self.user_values[0] = chunk[0]
+                self.user_values[1] = chunk[1]
+                self.user_values[2] = chunk[2]
+                self.user_values[3] = chunk[3]
+
+                self.user_values[16] = chunk[7]
+                self.inputs[16].setText(f"{self.user_values[16]:.2f}")
+
+                self.user_values[18] = chunk[4]
+                self.user_values[19] = chunk[5]
+
+                # Update GUI for display
+                for i in range(4):
+                    self.inputs[i].setText(f"{self.user_values[i]:.4f}")
+                self.inputs[18].setText(f"{chunk[4]:.1f}")
+                self.inputs[19].setText(f"{chunk[5]:.1f}")
+
+                print('Attempting to optimise overlap of Beam B with Beam A')
+                newBxTilt , newByTilt , zero_phase = overlap_optimiser(self, plm, camera)
+                # Update the GUI text boxes with the new values
+
+                chunk[2] = newBxTilt
+                chunk[3] = newByTilt
+                chunk[4] = zero_phase
+
+                # Update internal values of tilt and phase
+                self.user_values[2] = chunk[2]
+                self.user_values[3] = chunk[3]
+                self.user_values[18] = chunk[4]
+
+                # Update GUI for display
+                for i in range(4):
+                    self.inputs[i].setText(f"{self.user_values[i]:.4f}")
+                self.inputs[18].setText(f"{chunk[4]:.1f}")
+
+                file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT_optimised.xlsx'
+                df_opt = pd.read_excel(file_path, header=None, usecols="A:D")
+
+                total_beams = 49
+                rows_per_beam = 11
+                required_rows = total_beams * rows_per_beam
+                df_opt = df_opt.reindex(range(required_rows))
+                start_index = 1 + beamNum * 11   # zero-indexed beamNum
+                df_opt.iloc[start_index:start_index+10, 3] = chunk
+                df_opt.to_excel(file_path, index=False, header=False)
+
+            self.multibeam_overlap_optimiser_flag = False
+
+        if self.multibeam_flatness_optimiser_flag:
+            from numba import njit
+
+            @njit
+            def add_beams(acc, A_amp, A_phase, B_amp, B_phase, global_amp):
+                rows, cols = A_amp.shape
+                for i in range(rows):
+                    for j in range(cols):
+                        a = A_amp[i, j] * np.cos(A_phase[i, j]) + 1j * A_amp[i, j] * np.sin(A_phase[i, j])
+                        b = B_amp[i, j] * np.cos(B_phase[i, j]) + 1j * B_amp[i, j] * np.sin(B_phase[i, j])
+                        acc[i, j] += global_amp * (a + b)
+
+            plm.pause_ui()
+            print('\nEntering multibeam mode')
+            file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT_optimised.xlsx'
+            df = pd.read_excel(file_path) 
+            beamParameters = df.iloc[:, 3].values #.dropna().tolist() 
+            beamParameterBlocks = []
+            # Walk through the column in steps of 11 (10 data rows + 1 gap row)
+            for i in range(0, len(beamParameters), 11):  
+                chunk = beamParameters[i:i+10]
+                if len(chunk) == 10 and not np.any(pd.isna(chunk)):
+                    beamParameterBlocks.append(chunk)
+
+            beamParameterBlocks = np.array(beamParameterBlocks)
+                    
+            beamA_HG_phase, beamA_HG_amplitude = HG_mode(cols, rows, self.user_values[4], self.user_values[5], self.user_values[8], self.user_values[9], self.user_values[12], self.user_values[13])
+            beamB_HG_phase, beamB_HG_amplitude = HG_mode(cols, rows, self.user_values[6], self.user_values[7], self.user_values[10], self.user_values[11], self.user_values[14], self.user_values[15])
+
+            finalCombined = np.zeros((rows, cols), dtype=np.complex128)
+            for i, chunk in enumerate(beamParameterBlocks):
+                print('Loading parameters for Beam: ' + str(int(i)))
+
+                beamA_phase_tilt = generate_phase_tilt(rows, cols, chunk[0], chunk[1], self.button_states[0], self.button_states[1]) 
+                beamB_phase_tilt = generate_phase_tilt(rows, cols, chunk[2], chunk[3], self.button_states[2], self.button_states[3])
+
+                relative_amplitudes = np.array([chunk[7],chunk[8]])
+
+                max_val = np.max(relative_amplitudes)
+                if max_val > 0:
+                    relative_amplitudes = relative_amplitudes / max_val
+
+                beamA_amplitude = beamA_HG_amplitude * relative_amplitudes[0]
+                beamB_amplitude = beamB_HG_amplitude * relative_amplitudes[1]
+                global_amplitude = chunk[9]
+                if abs(global_amplitude) < 1e-6:
+                    continue
+                
+                relative_phase_A = (chunk[4]/100)*2*np.pi  
+                relative_phase_B = (chunk[5]/100)*2*np.pi
+                #print('Relative Phase Beam A = ' + str(np.round(relative_phase_A,2)))
+
+                global_phase = (chunk[6]/100)*2*np.pi
+
+                beamA_phase = beamA_phase_tilt - self.beam_A_correction_data + beamA_HG_phase + relative_phase_A + global_phase
+                beamB_phase = beamB_phase_tilt - self.beam_B_correction_data + beamB_HG_phase + relative_phase_B + global_phase
+
+                add_beams(finalCombined, beamA_amplitude, beamA_phase, beamB_amplitude, beamB_phase, global_amplitude)
+                finalCombined[np.abs(finalCombined) < 1e-6] = 0
+
+
+            print('\nMultibeam file path = ' + str(file_path))
+            amplitude_modulated_combined_phase = amp_mod_phase(finalCombined) 
+            plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
+            plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (M, N, numHolograms)).astype(np.float32)
+            plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')
+                                        
+            plm.bitpack_and_insert_gpu(plm_frame, 1)
+            plm.resume_ui()
+            plm.set_frame(1)
+            time.sleep(0.2)
+            plm.play()
+            plm.play()
+            move_slider_to_not_attenuator(self)
+
+            print('Grab and save 50 images using current plm config')
+            folder_name, offline_folder_name = grab_50_images(self.camera, 'grab50')
+
+            from find49Centroids import find_49_centroids
+            centroids , roi_sums = find_49_centroids(folder_name)
+            
+            new_global_amplitudes=[]
+            for idx in range(49):
+                current_beam_amplitude = beamParameterBlocks[idx][9]
+                nga = current_beam_amplitude * (np.mean(roi_sums) / roi_sums[idx])**0.5
+                new_global_amplitudes.append(nga)
+                beamParameterBlocks[idx][9] = nga
+
+            total_beams = len(beamParameterBlocks)
+            rows_per_beam = 11
+            required_rows = total_beams * rows_per_beam
+            df = df.reindex(range(required_rows))  # <-- ensures slice exists
+
+            for beamNum, chunk in enumerate(beamParameterBlocks):
+                start_index = 1 + beamNum * rows_per_beam  # leave first row empty
+                df.iloc[start_index:start_index + len(chunk), 3] = chunk.tolist()  # convert to list for safety
+
+            df.to_excel(file_path, index=False, header=False)
+            
+            self.multibeam_flatness_optimiser_flag = False
+
+
+        if self.tilt_mapping_flag:
+            print('Running tilt map sequence \n')
+            tilt_mapping(self, plm, camera)
+            self.tilt_mapping_flag = False 
+
+        if self.overlap_optimiser_flag:
+            print('Attempting to optimise overlap of Beam B with Beam A')
+            newBxTilt , newByTilt , zero_phase = overlap_optimiser(self, plm, camera)
+            # Update the GUI text boxes with the new values
+            self.inputs[2].setText(f"{newBxTilt:.4f}")
+            self.inputs[3].setText(f"{newByTilt:.4f}")
+            self.inputs[18].setText(f"{zero_phase:.2f}")
+
+            self.overlap_optimiser_flag = False
+
+        if self.slider_flag:
+            print('Slider')
+            slider(self)
+            self.slider_flag = False
 
         if self.amp_ramp_frame_flag:
             plm.pause_ui()
@@ -679,7 +1227,7 @@ class InteractiveGUI(QWidget):
             self.camera.Height.SetValue(image_height)
 
             offset_x = 208
-            offset_y = 208            
+            offset_y = 128            
             self.camera.OffsetX.SetValue(offset_x)
             self.camera.OffsetY.SetValue(offset_y)
 
@@ -725,133 +1273,43 @@ class InteractiveGUI(QWidget):
             folder_name = save_super_pixel_images(all_images, '_Amp ramp')
             filename = os.path.join(folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
-            
-            print('\nSwitching back to free streaming')
-            self.camera.TriggerMode.SetValue("Off")        
-            offset_x = 0
-            offset_y = 0        
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-            image_height = 512
-            image_width = 512
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            plm.set_frame(0)
-            time.sleep(0.5)
-            plm.play()
-            plm.play()
+            self.switch_to_free_streaming()
             self.amp_ramp_frame_flag = False
 
         if self.phase_scan_frame_flag:
-            plm.pause_ui()
-            print('Bitpacking phase scan frame')
-            plm_phase_scan_frame = phase_scanning_frame_generator (beamA_phase_tilt ,self.beam_A_correction_data , beamA_HG_phase , beamB_phase, beamA_amplitude, beamB_amplitude)
-            plm_phase_scan_frame = np.transpose(plm_phase_scan_frame, (1, 0, 2)).copy(order='F')
-            
-            plm.bitpack_and_insert_gpu(plm_phase_scan_frame, 65)
+            if camera.IsGrabbing():
+                camera.StopGrabbing()
 
-            plm.resume_ui()
-            plm.play()
-            plm.play()
-            
-            time.sleep(0.1)
-            print("Sending TTL to Line 3...")
-            self.task.start()  # Basler acquisition start trigger
-            self.task.write(True)  
-            time.sleep(0.05)  
-            self.task.write(False)  
-            time.sleep(0.05)  
-            self.task.stop()
+            camera.TriggerMode.SetValue("Off")  # free run
+            camera.StartGrabbingMax(1)
 
-            grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+            grab_result = camera.RetrieveResult(
+                5000, pylon.TimeoutHandling_ThrowException
+            )
 
-            #Hardware triggered acquistion starts here
-            if grabResult.GrabSucceeded():
-                print("TTL trigger received on Line 03.")
-                grabResult.Release() 
+            if grab_result.GrabSucceeded():
+                img = grab_result.Array
             else:
-                print("Timeout waiting for the first image.")
-                self.camera.StopGrabbing()  # Important: Stop grabbing before reconfiguring.
-                self.camera.Close()
-            
-            self.camera.StopGrabbing()
-            all_images = np.zeros((800, 128, 128), dtype=np.uint8)
-            
-            idx = 0 
-            self.camera.MaxNumBuffer.Value = 25
-            self.camera.TriggerSource.SetValue("Line1")  
-            self.camera.TriggerSelector.SetValue("FrameStart")
-            self.camera.TriggerMode.SetValue("On")  # Enable per-frame trigger
-            
-            self.camera.TriggerActivation.SetValue("RisingEdge")
-            image_height = 128
-            image_width = 128
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
+                img = None
+            grab_result.Release()
+            camera.StopGrabbing()
 
-            offset_x = 208
-            offset_y = 208            
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
+            self.centroid_x, self.centroid_y = baslerCentroid(img, 3, 5)
+            print('XY centroid = ' + str(self.centroid_x) + ' ' + str(self.centroid_y) + ' pix')
 
-            self.camera.ExposureTimeAbs.SetValue(200)
-            self.camera.StartGrabbingMax(800)
-            last_frame_number = None
+            roi_size = 64
+            half_roi = roi_size // 2
+            cx, cy = int(self.centroid_x), int(self.centroid_y)
 
-            while self.camera.IsGrabbing():
-                grab_start = time.perf_counter_ns()  # Start timing grab
-                grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
-                grab_end = time.perf_counter_ns()
-                if grabResult.GrabSucceeded():
-                    frame_number = grabResult.GetBlockID()
-                    
-                    img = grabResult.Array
-                    all_images[idx]=img                   
-                else:
-                    print("Error: ", grabResult.ErrorCode, grabResult.ErrorDescription)
-                
-                grab_time_us = (grab_end - grab_start)
-                timing_data.append(grab_time_us)
-                
-                frame_number = grabResult.GetBlockID()
-                
-                if last_frame_number is not None and frame_number != last_frame_number + 1:
-                    missed_triggers = frame_number - last_frame_number - 1
-                    print(f"Warning: Missed {missed_triggers} trigger(s)!")
-                        
-                last_frame_number = frame_number  # Update last frame number
-                grabResult.Release()
-                idx=idx+1
+            # Make sure ROI is within bounds
+            xmin = max(cx - half_roi, 0)
+            xmax = min(cx + half_roi, 512)
+            ymin = max(cy - half_roi, 0)
+            ymax = min(cy + half_roi, 512)
 
-                if idx==5:
-                    plm.set_frame(65)
-                    print('Global phase scan started')
-                    plm.play()
-                    plm.play()
-
-            self.camera_trigger_mode_button.setChecked(False)
-            self.hardware_triggering_enabled = False
-                       
-            print('\nAll images acquired')
-            folder_name = save_super_pixel_images(all_images, 'phase scan')
-            phase_scan_analysor(all_images)
-
-            print('\nSwitching back to free streaming')
-            self.camera.TriggerMode.SetValue("Off")        
-            offset_x = 0
-            offset_y = 0        
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-            image_height = 512
-            image_width = 512
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            plm.set_frame(0)
-            time.sleep(0.5)
-            plm.play()
-            plm.play()
+            roi_slice = (slice(ymin, ymax), slice(xmin, xmax))
+            zero_phase = find_global_phase_minimum_2(
+            self, plm, camera, 0, 0, 0, 0, rows, cols, images_per_batch=10, roi_slice=roi_slice)
             self.phase_scan_frame_flag = False
                 
         if self.bitpack_enabled:
@@ -872,51 +1330,12 @@ class InteractiveGUI(QWidget):
             plm.play()
 
         if self.hardware_triggering_enabled:
-            print('Hardware triggering enabled')
-
-            if self.camera.IsGrabbing():
-                self.camera.StopGrabbing()
-        
-            print("Switching to hardware-triggered acquisition...")
-
-            self.countOfImagesToGrab=1800
-            # Disable any triggers first
-            self.camera.TriggerSource.SetValue("Line1")
-            self.camera.TriggerMode.SetValue("Off")
-                
-            # Select GPIO line 3
-            self.camera.LineSelector.Value = "Line3"
-            self.camera.LineMode.Value = "Input"
-            self.camera.TriggerSource.SetValue("Line3")
-            self.camera.TriggerMode.SetValue("Off") 
-
-            self.camera.TriggerSelector.SetValue("FrameStart")
-            self.camera.TriggerSource.SetValue("Line3")
-            self.camera.TriggerMode.SetValue("On")
-            self.camera.TriggerActivation.SetValue("RisingEdge")
-
-            image_height = 128
-            image_width = 128
-            
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            
-            offset_x = 208
-            offset_y = 208
-            
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-
-            self.camera.ExposureTimeAbs.SetValue(400)
-
-            # Camera is now waiting for a TTL trigger on Line 3 to start the acquistion 
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            print(" Waiting for Acquisition Start trigger on Line 3...")
-            # grabResult = camera.RetrieveResult(1800000, pylon.TimeoutHandling_ThrowException)
-
+            enable_hardware_trigger(self)
 
         if self.beam_A_SP_scan_enabled or self.beam_B_SP_scan_enabled or self.beam_A_complex_field_measurement_enabled or self.beam_B_complex_field_measurement_enabled:
             plm.set_frame(60) #choose any empty frame to make sure camera not exposed whilst frames are bitpacked
+            self.slider_position = "Attenuator"  
+            slider(self) 
             time.sleep(1)
             plm.pause_ui()
             if self.beam_A_SP_scan_enabled:
@@ -931,14 +1350,14 @@ class InteractiveGUI(QWidget):
                 print('\n Attempting complex field measurement for Beam B')
 
             phase_tilt = phase_tilt.astype(np.float32)   
-            print('\n Compiling super pixel frames - this takes about 15 seconds')         
+            print('\n Compiling super pixel frames - this takes about 25 seconds')         
             sPix_phase, nx_sPix, ny_sPix = super_pixel_set_numba(64, 64, phase_tilt, 4)
 
             sPix_phase_init = super_pixel_set_init (phase_tilt,sPix_phase)
 
             SP_frames = super_pixel_frames(sPix_phase_init)
 
-            global superPixelFrames
+            #global superPixelFrames
             superPixelFrames = SP_frames
 
             for i in range(SP_frames.shape[0]):
@@ -962,6 +1381,7 @@ class InteractiveGUI(QWidget):
             self.task.write(False)  
             time.sleep(0.05)  
             self.task.stop()
+            time.sleep(0.1)
 
             grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
 
@@ -969,13 +1389,15 @@ class InteractiveGUI(QWidget):
             if grabResult.GrabSucceeded():
                 print("TTL trigger received on Line 03.")
                 grabResult.Release() 
+                plm.play()
+                plm.play()
             else:
                 print("Timeout waiting for the first image.")
                 self.camera.StopGrabbing()  # Important: Stop grabbing before reconfiguring.
                 self.camera.Close()
             
             self.camera.StopGrabbing()
-            all_images = np.zeros((self.countOfImagesToGrab, image_height, image_width), dtype=np.uint8)
+            all_images = np.zeros((self.countOfImagesToGrab, self.image_height, self.image_width), dtype=np.uint8)
             
             idx = 0 
             self.camera.MaxNumBuffer.Value = 25
@@ -986,11 +1408,12 @@ class InteractiveGUI(QWidget):
             self.camera.TriggerActivation.SetValue("RisingEdge")
 
             self.camera.StartGrabbingMax(self.countOfImagesToGrab)
+            #time.sleep(0.2)
             last_frame_number = None
 
             while self.camera.IsGrabbing():
                 grab_start = time.perf_counter_ns()  # Start timing grab
-                grabResult = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_ThrowException)
+                grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
                 grab_end = time.perf_counter_ns()
                 if grabResult.GrabSucceeded():
                     frame_number = grabResult.GetBlockID()
@@ -1012,10 +1435,13 @@ class InteractiveGUI(QWidget):
                 last_frame_number = frame_number  # Update last frame number
                 grabResult.Release()
                 idx=idx+1
+                #print(idx)
 
                 if idx==5:
                     plm.start_sequence(frames)
                     print('plm sequence started')
+                    plm.play()
+                    plm.play()
 
             self.camera_trigger_mode_button.setChecked(False)
             self.hardware_triggering_enabled = False
@@ -1043,21 +1469,7 @@ class InteractiveGUI(QWidget):
             self.beam_B_SP_scan_enabled= False
             self.beam_A_complex_field_measurement_enabled = False
             self.beam_B_complex_field_measurement_enabled = False
-            print('\nSwitching back to free streaming')
-            self.camera.TriggerMode.SetValue("Off")        
-            offset_x = 0
-            offset_y = 0        
-            self.camera.OffsetX.SetValue(offset_x)
-            self.camera.OffsetY.SetValue(offset_y)
-            image_height = 512
-            image_width = 512
-            self.camera.Width.SetValue(image_width)
-            self.camera.Height.SetValue(image_height)
-            self.camera.ExposureTimeAbs.SetValue(200)
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-
-            plm.play()
-            plm.play()
+            self.switch_to_free_streaming()
 
         
 
