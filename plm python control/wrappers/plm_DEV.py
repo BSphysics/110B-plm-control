@@ -51,6 +51,8 @@ from applyDarkPlotTheme import apply_dark_plot_theme
 from polMeasure import pol_measure
 from loadMultibeamData import load_multibeam_data
 from multiBeamSequence import multi_beam_seq
+from polAnalyse49Beams import pol_analyse_49_beams
+from beamAPhaseOptimiser49Beams import beam_A_phase_optimiser_49_beams
 
 import ctypes
 from PLMController import PLMController 
@@ -239,6 +241,8 @@ class InteractiveGUI(QWidget):
         self.slider_position = None
         self.multibeam_overlap_optimiser_flag = False
         self.multibeam_flatness_optimiser_flag = False
+        self.pol_analyse_49_beams_flag = False
+        self.beam_A_phase_optimiser_49_beams_flag = False
 
         
         """Set up the GUI layout and widgets."""
@@ -525,6 +529,18 @@ class InteractiveGUI(QWidget):
         self.multibeam_flatness_button.clicked.connect(self.multibeam_flatness)
         self.middle_layout.addWidget(self.multibeam_flatness_button)
 
+        # Analyse polarisation of 49 beams
+        self.pol_analyse_49_beams_button = QPushButton('Analyse polarisation 49 beams', self)
+        self.pol_analyse_49_beams_button.setStyleSheet("background-color: brown; color: white;")
+        self.pol_analyse_49_beams_button.clicked.connect(self.polarisation_analyse_49_beams)
+        self.middle_layout.addWidget(self.pol_analyse_49_beams_button)
+
+        # Phase shifting Beam A to make all beams linearly polarised
+        self.Beam_A_phase_shifting_49_beams_button = QPushButton('Beam A phase optimiser 49 beams', self)
+        self.Beam_A_phase_shifting_49_beams_button.setStyleSheet("background-color: pink; color: green;")
+        self.Beam_A_phase_shifting_49_beams_button.clicked.connect(self.BA_phase_shifting_49_beams)
+        self.middle_layout.addWidget(self.Beam_A_phase_shifting_49_beams_button)
+
         # Slider button 
         self.slider_button = QPushButton('Slider toggle', self)
         self.slider_button.setStyleSheet("background-color: gray; color: yellow;")
@@ -688,6 +704,14 @@ class InteractiveGUI(QWidget):
         self.multibeam_flatness_optimiser_flag = True
         self.update_value()
 
+    def polarisation_analyse_49_beams(self):
+        self.pol_analyse_49_beams_flag = True
+        self.update_value()
+
+    def BA_phase_shifting_49_beams(self):
+        self.beam_A_phase_optimiser_49_beams_flag = True
+        self.update_value()
+
 
     def slider_UI(self):
         if self.slider_flag:   # safeguard
@@ -820,7 +844,7 @@ class InteractiveGUI(QWidget):
 
         if self.polarisation_measurement_flag:
             print('Polarisation measurement using rotating linear polariser')
-            pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_')
+            pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , 400)
             self.polarisation_measurement_flag = False
 
         if self.grab_50_flag:
@@ -1148,13 +1172,8 @@ class InteractiveGUI(QWidget):
                 beamParameterBlocks[idx][9] = nga
 
             from openpyxl import load_workbook
-
-            # 1. Load your existing file
             wb = load_workbook(file_path)
             ws = wb.active  # This targets the currently active sheet
-
-            # 2. Starting point
-            # Excel is 1-indexed. Row 1 is empty, so we start at Row 2.
             current_excel_row = 2 
 
             for chunk in beamParameterBlocks:
@@ -1163,15 +1182,21 @@ class InteractiveGUI(QWidget):
                     # column=4 is Column D
                     ws.cell(row=current_excel_row, column=4).value = value
                     current_excel_row += 1
-                
-                # After writing 10 values, skip one row for the gap
                 current_excel_row += 1
-
-            # 3. Save it
             wb.save(file_path)
                         
             self.multibeam_flatness_optimiser_flag = False
 
+        if self.beam_A_phase_optimiser_49_beams_flag:
+            print('\n Starting phase shifting Beam A in 49 beam mode')
+            beam_A_phase_optimiser_49_beams(self, plm, camera)
+            print('\n Finished phase shifting Beam A in 49 beam mode')
+            self.beam_A_phase_optimiser_49_beams_flag = False
+
+        if self.pol_analyse_49_beams_flag:
+            print('\n Analysing polarisation of 49 beams')
+            pol_analyse_49_beams()
+            self.pol_analyse_49_beams_flag=False
 
         if self.tilt_mapping_flag:
             print('Running tilt map sequence \n')

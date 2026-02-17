@@ -23,7 +23,7 @@ def load_multibeam_data(self):
 	root.withdraw()
 
 	# Set a default path (relative or absolute)
-	default_path = os.path.join('D:\PLM\plm python control\wrappers', "Data")
+	default_path = os.path.join('D:\PLM\plm python control\wrappers', "multibeam parameters")
 
 	# Open file dialog with default path
 	file_path = filedialog.askopenfilename(

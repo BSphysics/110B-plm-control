@@ -21,7 +21,7 @@ from scipy.ndimage import gaussian_filter
 
 from basler_centroid import baslerCentroid
 
-def pol_measure(camera, global_amplitudes, beamName):
+def pol_measure(camera, global_amplitudes, beamName, exposure_time):
 
     if camera.IsGrabbing():
         camera.StopGrabbing()
@@ -106,7 +106,7 @@ def pol_measure(camera, global_amplitudes, beamName):
     camera.TriggerSelector.SetValue('FrameStart')
     camera.TriggerMode.SetValue('On')
     camera.TriggerSource.SetValue('Software')
-    camera.ExposureTimeAbs.SetValue(180)
+    camera.ExposureTimeAbs.SetValue(exposure_time)
 
     # Start grabbing manually
     camera.StartGrabbingMax(num_batches * images_per_batch)
@@ -181,7 +181,7 @@ def pol_measure(camera, global_amplitudes, beamName):
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
     cmd = "1ma" + "0000" + degreestoHex(83) + "\r\n"
-    print(cmd)
+    # print(cmd)
     ELLser.write(cmd.encode("utf-8"))
 
     time.sleep(1)
@@ -211,13 +211,15 @@ def pol_measure(camera, global_amplitudes, beamName):
     offline_time_folder = os.path.join(offline_date_folder, time_str)
     os.makedirs(offline_time_folder, exist_ok=True)
 
-    filename = os.path.join(time_folder, beamName + s1) 
+    filename = os.path.join(time_folder, beamName + s1 + ".npy")
     np.save(filename, mean_images)
 
     offline_filename = os.path.join(offline_time_folder, beamName + ' Beam A amplitude = ' + str(global_amplitudes[0]) + ' Beam B amplitude = ' + str(global_amplitudes[1]))
     np.save(offline_filename, mean_images)
 
     del all_images
+
+    return filename
 
 
     # degrees = np.pi/180
