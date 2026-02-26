@@ -21,7 +21,7 @@ from scipy.ndimage import gaussian_filter
 
 from basler_centroid import baslerCentroid
 
-def pol_measure(camera, global_amplitudes, beamName, exposure_time):
+def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPhaseShift=None):
 
     if camera.IsGrabbing():
         camera.StopGrabbing()
@@ -195,7 +195,10 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time):
     # Create 'images' directory if it doesn't exist
     now = datetime.now()
     timestamp_str = now.strftime("%Y_%m_%d___%H_%M_%S") +' Pol measurement '
-    s1 = ' BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1])
+    if beamAPhaseShift is not None:
+        s1 = ' BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1]) + ' BeamA phase shift = ' + str(beamAPhaseShift)
+    else:
+        s1 = ' BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1])
 
     date_str = now.strftime("%Y_%m_%d")
     date_folder = os.path.join(os.getcwd(), 'Data', date_str)
@@ -206,15 +209,16 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time):
     time_folder = os.path.join(date_folder, time_str)
     os.makedirs(time_folder, exist_ok=True)
 
-    offline_date_folder = os.path.join(r'C:\Users\bs426\OneDrive - University of Exeter\!Work\Work.2025\Lab.2025\110B\Images for offline analysis',date_str)
+    offline_date_folder = os.path.join(r'C:\Users\bs426\OneDrive - University of Exeter\!Work\Work.2026\Lab.2026\110B\Images for offline analysis',date_str)
     os.makedirs(offline_date_folder, exist_ok=True)
     offline_time_folder = os.path.join(offline_date_folder, time_str)
     os.makedirs(offline_time_folder, exist_ok=True)
 
-    filename = os.path.join(time_folder, beamName + s1 + ".npy")
+    filename = os.path.join(time_folder, s1 + ".npy")
     np.save(filename, mean_images)
 
-    offline_filename = os.path.join(offline_time_folder, beamName + ' Beam A amplitude = ' + str(global_amplitudes[0]) + ' Beam B amplitude = ' + str(global_amplitudes[1]))
+    offline_filename = os.path.join(offline_time_folder, s1 + ".npy")
+    print(offline_filename)
     np.save(offline_filename, mean_images)
 
     del all_images

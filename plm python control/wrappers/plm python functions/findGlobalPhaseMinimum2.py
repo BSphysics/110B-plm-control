@@ -140,7 +140,7 @@ def find_global_phase_minimum_2(
 
     print(f"\nOptimal global phase (%) = {optimal_phase:.2f}")
 
-    # -------------------------------------------------
+# -------------------------------------------------
 # FINAL MEASUREMENT AT OPTIMAL PHASE AND π SHIFT
 # -------------------------------------------------
     # Intensity at optimal phase

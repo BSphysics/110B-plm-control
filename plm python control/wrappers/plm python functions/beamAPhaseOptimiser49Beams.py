@@ -177,7 +177,7 @@ def beam_A_phase_optimiser_49_beams(self, plm, camera):
         plm.play()
         plm.play()
 
-        file_path = pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , 400)
+        file_path = pol_measure(self.camera, global_amplitudes, '_pol_measurement_' , 400 , beamAPhaseShift = beamAPhaseShift)
         mean_intensity_ellipticity = pol_analyse_49_beams(manual_path=file_path)[0]
         mean_intensity_ellipticities.append(mean_intensity_ellipticity)
 
