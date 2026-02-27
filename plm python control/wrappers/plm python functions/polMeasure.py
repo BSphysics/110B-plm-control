@@ -21,7 +21,7 @@ from scipy.ndimage import gaussian_filter
 
 from basler_centroid import baslerCentroid
 
-def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPhaseShift=None):
+def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPhaseShift=None, multiBeamFilePath=None):
 
     if camera.IsGrabbing():
         camera.StopGrabbing()
@@ -196,9 +196,16 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
     now = datetime.now()
     timestamp_str = now.strftime("%Y_%m_%d___%H_%M_%S") +' Pol measurement '
     if beamAPhaseShift is not None:
-        s1 = ' BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1]) + ' BeamA phase shift = ' + str(beamAPhaseShift)
+        s1 = 'BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1]) + ' BeamA phase shift = ' + str(beamAPhaseShift)
     else:
-        s1 = ' BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1])
+        s1 = 'BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1])
+
+    if multiBeamFilePath is not None:
+        base_name = os.path.basename(multiBeamFilePath)
+        base_name_no_ext = os.path.splitext(base_name)[0]  # remove .xlsx
+        s1 = 'Multibeam file__' + base_name_no_ext
+    else:
+        s1 = ''
 
     date_str = now.strftime("%Y_%m_%d")
     date_folder = os.path.join(os.getcwd(), 'Data', date_str)
@@ -217,114 +224,10 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
     filename = os.path.join(time_folder, s1 + ".npy")
     np.save(filename, mean_images)
 
-    offline_filename = os.path.join(offline_time_folder, s1 + ".npy")
-    print(offline_filename)
-    np.save(offline_filename, mean_images)
+    #offline_filename = os.path.join(offline_time_folder, s1 + ".npy")
+    #print(offline_filename)
+    #np.save(offline_filename, mean_images)
 
     del all_images
 
-    return filename
-
-
-    # degrees = np.pi/180
-    # polariserAngles = np.arange(0,200,20)
-
-    # imgs = mean_images
-
-    # powers=[]
-
-    # fig, axs = plt.subplots(nrows=2, ncols=5, figsize=(15, 12))
-    # plt.subplots_adjust(hspace=0.5)
-    # fig.suptitle("Zoomed images", fontsize=8, y=0.95)
-
-    # brightest_index = np.argmax(imgs.sum(axis=(1, 2)))  
-    # brightest_image = imgs[brightest_index]
-
-    # centroid_x, centroid_y = baslerCentroid(brightest_image, 3, 5)
-    # for img, ax in zip(imgs, axs.ravel()):
-    #     #centroid_x, centroid_y = baslerCentroid(img, 3, 5)
-    #     zoomed_image_half_size = 40
-    #     zoomed_img = img[centroid_y - zoomed_image_half_size : centroid_y + zoomed_image_half_size ,centroid_x - zoomed_image_half_size : centroid_x + zoomed_image_half_size]
-        
-    #     rectangle_half=10
-    #     height, width = zoomed_img.shape
-    #     rect_x_coord = width // 2 - rectangle_half
-    #     rect_y_coord = height // 2 - rectangle_half
-    #     rect_end_x = rect_x_coord + int(2*rectangle_half)
-    #     rect_end_y = rect_y_coord + int(2*rectangle_half)
-        
-    #     mask = zoomed_img > 10
-    #     zoomed_img = zoomed_img*mask    
-    #     # zoomed_img = gaussian_filter(zoomed_img,3)
-        
-    #     image_sum = float(np.sum(zoomed_img[rect_y_coord : rect_end_y , rect_x_coord : rect_end_x]))
-    #     background_sum = float(np.sum(zoomed_img[rect_y_coord : rect_end_y , rect_x_coord-int(2*rectangle_half) : rect_end_x-int(2*rectangle_half)])) 
-    #     powers.append(image_sum-background_sum)
-
-       
-    #     ax.imshow(zoomed_img, cmap = 'gray', vmin = 0, vmax=255)
-    #     ax.axis('off')
-
-    #     figName = os.path.join(time_folder, 'fig1.png') 
-    #     plt.savefig(figName, dpi='figure')
-
-    #     figName = os.path.join(offline_time_folder, 'fig1.png') 
-    #     plt.savefig(figName, dpi='figure')
-
-  
-    # from matplotlib import patches
-
-    # fig, (ax1,ax2) = plt.subplots(1,2, figsize = (12,6))
-
-    # ax1.plot(polariserAngles,powers,'ro')
-    # ax1.set_xlabel('Polariser Angle (deg)')
-
-    # from scipy.optimize import curve_fit
-
-    # def model_f(theta,p1,p2,p3,p4):
-
-    #   return (p1*np.cos(theta*degrees-p3))**2 + (p2*np.sin(theta*degrees-p3))**2 +p4
-
-    # try: 
-    #     popt, pcov = curve_fit(model_f, polariserAngles, powers, bounds = ([0,0,0,0] , [np.max(powers)*1.5 , np.min(powers)*1.2+1e-5, 2*np.pi, 0.01]))
-
-    #     Ex, Ey, alpha, offset = popt
-    #     fittingAngles = np.arange(0,180,1)
-
-    #     ax1.plot(fittingAngles,model_f(fittingAngles, Ex, Ey, alpha, offset),'--b')
-    #     ax1.set_ylim(0,np.max(powers)*1.1)
-    #     print('\nEllipse semi major axis angle = ' + str(np.round(alpha*180/np.pi,1)) + ' degrees \n')
-
-    #     e1 = patches.Ellipse((0, 0), Ex/2, Ey/2,
-    #                      angle=alpha*180/np.pi, linewidth=4,
-    #                      fill=False, edgecolor='red', linestyle=(0, (5, 5)), zorder=1)
-
-    #     e2 = patches.Ellipse((0, 0), Ex/2, Ey/2,
-    #                          angle=alpha*180/np.pi, linewidth=4,
-    #                          fill=False, edgecolor='yellow', linestyle=(5, (5, 5)), zorder=2)
-
-    #     ax2.add_patch(e1)
-    #     ax2.add_patch(e2)
-    #     ax2.set_xlim([-50,50])
-    #     ax2.set_ylim([-50,50])
-    #     # ax2.axis('square')
-    #     ax2.axis('off')
-    #     plt.suptitle('Ellipse semi major axis = ' + str(np.round(alpha*180/np.pi)) + ' deg, ' + 'Emax = ' + str(np.round(Ex,2)) + ', Emin = ' + str(np.round(Ey,2) ))
-        
-    #     figName = os.path.join(time_folder, 'fig2.png') 
-    #     plt.savefig(figName, dpi='figure')
-
-    #     figName = os.path.join(offline_time_folder, 'fig2.png') 
-    #     plt.savefig(figName, dpi='figure')
-
-    #     print('Fitted Emax = ' + str(np.round(Ex,3)))
-    #     print('Fitted Emin = ' + str(np.round(Ey,3)))
-    #     print('Ellipticity = ' + str(np.round(Ey / Ex,3)))
-
-    # except RuntimeError as e:
-    #     print('fit failed', e)
-    #     ax1.set_title('Fit failed')
-    # plt.close('all')
-
-
-        
+    return filename        

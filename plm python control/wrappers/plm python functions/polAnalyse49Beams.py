@@ -51,6 +51,25 @@ def pol_analyse_49_beams(manual_path=None):
     img_smooth = gaussian_filter(img_ref, sigma=1)
 
     # ============================================================
+    # SAVE SMOOTHED REFERENCE IMAGE
+    # ============================================================
+
+    import matplotlib.cm as cm  # for grayscale colormap
+
+    plt.figure(figsize=(6,6))
+    plt.imshow(img_smooth, cmap=cm.gray)
+    #plt.title("49 beams")
+    plt.axis('off')
+
+    # Save in the same directory as the npy file
+    smooth_img_path = os.path.join(os.path.dirname(file_path),
+                                   "49_beams.png")
+    plt.savefig(smooth_img_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"Saved 49 beam image: {smooth_img_path}")
+
+    # ============================================================
     # FIND CENTROIDS
     # ============================================================
 
@@ -243,6 +262,48 @@ def pol_analyse_49_beams(manual_path=None):
     plt.tight_layout()
     plt.savefig(os.path.join(os.path.dirname(file_path),
                              "Ellipticity bar chart.png"))
+    plt.close()
+
+    # ============================================================
+    # BAR CHART: TOTAL INTENSITY PER BEAM
+    # ============================================================
+
+    # Sum over all polariser angles to get total intensity per beam
+    total_intensity_per_beam = powers_all.sum(axis=1)
+
+    plt.figure(figsize=(10, 5))
+    plt.bar(np.arange(1, N_SPOTS + 1), total_intensity_per_beam)
+    plt.xlabel("Beam Number")
+    plt.ylabel("Total Intensity (sum over ROI minus background)")
+    plt.title("Total Intensity per Beam")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    plt.savefig(os.path.join(os.path.dirname(file_path),
+                             "Total intensity per beam.png"))
+    plt.close()
+
+    # ============================================================
+    # ELLIPSE ANGLE vs SPOT NUMBER
+    # ============================================================
+
+    angles_rad = [r[2] for r in fit_results]
+    angles_deg = [np.degrees(a) if not np.isnan(a) else np.nan
+                  for a in angles_rad]
+
+    spot_numbers = np.arange(1, N_SPOTS + 1)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(spot_numbers, angles_deg, 'o-')
+    plt.xlabel("Beam Number")
+    plt.ylabel("Ellipse Angle (degrees)")
+    plt.title("Ellipse Orientation Angle vs Beam Number")
+    plt.ylim(0, 180)  # since alpha is wrapped to [0, π)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    plt.savefig(os.path.join(os.path.dirname(file_path),
+                             "Ellipse angle vs beam number.png"))
     plt.close()
 
     # ============================================================

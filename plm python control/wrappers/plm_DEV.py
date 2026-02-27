@@ -243,6 +243,7 @@ class InteractiveGUI(QWidget):
         self.multibeam_flatness_optimiser_flag = False
         self.pol_analyse_49_beams_flag = False
         self.beam_A_phase_optimiser_49_beams_flag = False
+        self.multibeam_file_path = None
 
         
         """Set up the GUI layout and widgets."""
@@ -844,7 +845,7 @@ class InteractiveGUI(QWidget):
 
         if self.polarisation_measurement_flag:
             print('Polarisation measurement using rotating linear polariser')
-            pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , 400)
+            pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , 400 , multiBeamFilePath=self.multibeam_file_path)
             self.polarisation_measurement_flag = False
 
         if self.grab_50_flag:
@@ -861,6 +862,7 @@ class InteractiveGUI(QWidget):
             plm.pause_ui()
             print('Entering multibeam mode - hold on to your hats!')
             combinedComplex, multibeam_file_path = load_multibeam_data(self)
+            self.multibeam_file_path = multibeam_file_path
             print('Multibeam file path = ' + str(multibeam_file_path))
             amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
             plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
