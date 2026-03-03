@@ -212,7 +212,7 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
     os.makedirs(date_folder, exist_ok=True)
 
     # Create subfolder with current time inside the date folder
-    time_str = now.strftime("%H_%M_%S") + beamName + s1
+    time_str = now.strftime("%H_%M_%S") #+ beamName + s1
     time_folder = os.path.join(date_folder, time_str)
     os.makedirs(time_folder, exist_ok=True)
 
