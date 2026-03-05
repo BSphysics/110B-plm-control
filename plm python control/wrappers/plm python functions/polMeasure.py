@@ -200,12 +200,12 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
     else:
         s1 = 'BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1])
 
-    if multiBeamFilePath is not None:
-        base_name = os.path.basename(multiBeamFilePath)
-        base_name_no_ext = os.path.splitext(base_name)[0]  # remove .xlsx
-        s1 = 'Multibeam file__' + base_name_no_ext
-    else:
-        s1 = ''
+    # if multiBeamFilePath is not None:
+    #     base_name = os.path.basename(multiBeamFilePath)
+    #     base_name_no_ext = os.path.splitext(base_name)[0]  # remove .xlsx
+    #     s1 = 'Multibeam file__' + base_name_no_ext
+    # else:
+    #     s1 = ''
 
     date_str = now.strftime("%Y_%m_%d")
     date_folder = os.path.join(os.getcwd(), 'Data', date_str)
@@ -216,10 +216,10 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
     time_folder = os.path.join(date_folder, time_str)
     os.makedirs(time_folder, exist_ok=True)
 
-    offline_date_folder = os.path.join(r'C:\Users\bs426\OneDrive - University of Exeter\!Work\Work.2026\Lab.2026\110B\Images for offline analysis',date_str)
-    os.makedirs(offline_date_folder, exist_ok=True)
-    offline_time_folder = os.path.join(offline_date_folder, time_str)
-    os.makedirs(offline_time_folder, exist_ok=True)
+    # offline_date_folder = os.path.join(r'C:\Users\bs426\OneDrive - University of Exeter\!Work\Work.2026\Lab.2026\110B\Images for offline analysis',date_str)
+    # os.makedirs(offline_date_folder, exist_ok=True)
+    # offline_time_folder = os.path.join(offline_date_folder, time_str)
+    # os.makedirs(offline_time_folder, exist_ok=True)
 
     filename = os.path.join(time_folder, s1 + ".npy")
     np.save(filename, mean_images)
