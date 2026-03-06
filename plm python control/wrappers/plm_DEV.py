@@ -53,6 +53,7 @@ from loadMultibeamData import load_multibeam_data
 from multiBeamSequence import multi_beam_seq
 from polAnalyse49Beams import pol_analyse_49_beams
 from beamAPhaseOptimiser49Beams import beam_A_phase_optimiser_49_beams
+from multispotPolAnalysis import multispot_pol_analysis
 
 import ctypes
 from PLMController import PLMController 
@@ -242,6 +243,7 @@ class InteractiveGUI(QWidget):
         self.multibeam_overlap_optimiser_flag = False
         self.multibeam_flatness_optimiser_flag = False
         self.pol_analyse_49_beams_flag = False
+        self.multispot_pol_analysis_flag = False
         self.beam_A_phase_optimiser_49_beams_flag = False
         self.multibeam_file_path = None
 
@@ -542,6 +544,12 @@ class InteractiveGUI(QWidget):
         self.Beam_A_phase_shifting_49_beams_button.clicked.connect(self.BA_phase_shifting_49_beams)
         self.middle_layout.addWidget(self.Beam_A_phase_shifting_49_beams_button)
 
+        # Analyse polarisation of any number of spots
+        self.multispot_pol_analysis_button = QPushButton('Analysing polarisation of n spots', self)
+        self.multispot_pol_analysis_button.setStyleSheet("background-color: cyan; color: black;")
+        self.multispot_pol_analysis_button.clicked.connect(self.multispot_polarisation_analysis)
+        self.middle_layout.addWidget(self.multispot_pol_analysis_button)
+
         # Slider button 
         self.slider_button = QPushButton('Slider toggle', self)
         self.slider_button.setStyleSheet("background-color: gray; color: yellow;")
@@ -709,6 +717,10 @@ class InteractiveGUI(QWidget):
         self.pol_analyse_49_beams_flag = True
         self.update_value()
 
+    def multispot_polarisation_analysis(self):
+        self.multispot_pol_analysis_flag = True
+        self.update_value()
+
     def BA_phase_shifting_49_beams(self):
         self.beam_A_phase_optimiser_49_beams_flag = True
         self.update_value()
@@ -860,7 +872,7 @@ class InteractiveGUI(QWidget):
 
         if self.multibeam_flag:
             plm.pause_ui()
-            print('Entering multibeam mode - hold on to your hats!')
+            print('Entering multibeam mode')
             combinedComplex, multibeam_file_path = load_multibeam_data(self)
             self.multibeam_file_path = multibeam_file_path
             print('Multibeam file path = ' + str(multibeam_file_path))
@@ -1099,15 +1111,19 @@ class InteractiveGUI(QWidget):
 
             plm.pause_ui()
             print('\nEntering multibeam mode')
-            file_path = 'D:\PLM\plm python control\wrappers\multiBeamData_FLAT_optimised.xlsx'
-            df = pd.read_excel(file_path) 
+            file_path = self.multibeam_file_path
+            df = pd.read_excel(self.multibeam_file_path)
+            beam_numbers_column = df.iloc[:,1].values
+            
             beamParameters = df.iloc[:, 3].values #.dropna().tolist() 
             beamParameterBlocks = []
+            beam_numbers = []
             # Walk through the column in steps of 11 (10 data rows + 1 gap row)
             for i in range(0, len(beamParameters), 11):  
                 chunk = beamParameters[i:i+10]
                 if len(chunk) == 10 and not np.any(pd.isna(chunk)):
                     beamParameterBlocks.append(chunk)
+                    beam_numbers.append(int(beam_numbers_column[i]))
 
             beamParameterBlocks = np.array(beamParameterBlocks)
                     
@@ -1116,7 +1132,7 @@ class InteractiveGUI(QWidget):
 
             finalCombined = np.zeros((rows, cols), dtype=np.complex128)
             for i, chunk in enumerate(beamParameterBlocks):
-                print('Loading parameters for Beam: ' + str(int(i)))
+                print('Loading parameters for Spot: ' + str(int(beam_numbers[i])))
 
                 beamA_phase_tilt = generate_phase_tilt(rows, cols, chunk[0], chunk[1], self.button_states[0], self.button_states[1]) 
                 beamB_phase_tilt = generate_phase_tilt(rows, cols, chunk[2], chunk[3], self.button_states[2], self.button_states[3])
@@ -1163,30 +1179,104 @@ class InteractiveGUI(QWidget):
             print('Grab and save 50 images using current plm config')
             folder_name, offline_folder_name = grab_50_images(self.camera, 'grab50')
 
-            from find49Centroids import find_49_centroids
-            centroids , roi_sums = find_49_centroids(folder_name)
+            n_spots = len(beamParameterBlocks)
+            from findnCentroids import find_n_centroids
+            beam_numbers, centroids, roi_sums = find_n_centroids(folder_name , n_spots)
+            if len(roi_sums) != len(beamParameterBlocks):
+                raise ValueError("Number of detected spots does not match beam file")
+
+            roi_lookup = dict(zip(beam_numbers, roi_sums))
+            print(roi_lookup)
+
             
             new_global_amplitudes=[]
-            for idx in range(49):
-                current_beam_amplitude = beamParameterBlocks[idx][9]
-                nga = current_beam_amplitude * (np.mean(roi_sums) / roi_sums[idx])**0.5
-                new_global_amplitudes.append(nga)
-                beamParameterBlocks[idx][9] = nga
+
+            # for idx in range(n_spots):
+            #     current_beam_amplitude = beamParameterBlocks[idx][9]
+            #     nga = current_beam_amplitude * (np.mean(roi_sums) / roi_sums[idx])**0.5
+            #     new_global_amplitudes.append(nga)
+            #     beamParameterBlocks[idx][9] = nga
+
+            target = np.mean(list(roi_lookup.values()))
+
+            for idx, chunk in enumerate(beamParameterBlocks):
+                # This is the actual beam number from the Excel row we are looking at
+                actual_beam_id = int(beam_numbers[idx]) 
+                
+                # Check if we actually have a camera measurement for THIS specific beam
+                if actual_beam_id in roi_lookup:
+                    measured_intensity = roi_lookup[actual_beam_id]
+                    current_amp = chunk[9]
+
+                    factor = (target / measured_intensity) ** 0.5  # 0.5 because intensity ∝ amplitude²
+                    new_amp = current_amp * factor
+                    new_amp = np.clip(new_amp, 0.5, 4)  # clip the amplitude directly, not the factor
+                    
+                    # Update the chunk
+                    beamParameterBlocks[idx][9] = new_amp
+                    
+                    print(f"Spot {actual_beam_id}: Measured={measured_intensity:.1f}, Old Amp={current_amp:.3f}, New Amp={new_amp:.3f}")
+                else:
+                    print(f"Warning: Excel has Spot {actual_beam_id}, but it wasn't found in the image!")
+
+                    # --- RENORMALISATION HERE ---
+                amps = beamParameterBlocks[:, 9]
+                beamParameterBlocks[:, 9] = amps / np.mean(amps)
+
+            # from openpyxl import load_workbook
+            # wb = load_workbook(file_path)
+            # ws = wb.active  # This targets the currently active sheet
+            # current_excel_row = 2 
+
+            # for chunk in beamParameterBlocks:
+            #     # chunk is the 10 parameters for one spot
+            #     for value in chunk:
+            #         # column=4 is Column D
+            #         ws.cell(row=current_excel_row, column=4).value = value
+            #         current_excel_row += 1
+            #     current_excel_row += 1
+            # wb.save(file_path)
 
             from openpyxl import load_workbook
-            wb = load_workbook(file_path)
-            ws = wb.active  # This targets the currently active sheet
-            current_excel_row = 2 
 
-            for chunk in beamParameterBlocks:
-                # chunk is your 10 values for one beam
-                for value in chunk:
-                    # column=4 is Column D
-                    ws.cell(row=current_excel_row, column=4).value = value
-                    current_excel_row += 1
-                current_excel_row += 1
+            # 1. Load the workbook and identify the sheet
+            wb = load_workbook(file_path)
+            ws = wb.active 
+
+            # 2. Create a map of {BeamNumber: StartingRow}
+            # We scan Column B (index 2) to find where each beam block starts
+            row_map = {}
+            for row_idx in range(1, ws.max_row + 1):
+                cell_val = ws.cell(row=row_idx, column=2).value
+                # If we find a new Beam ID and it's not already in our map
+                if isinstance(cell_val, (int, float)) and int(cell_val) not in row_map:
+                    row_map[int(cell_val)] = row_idx
+
+            # 3. Write the updated data back to the correct rows
+            for idx, chunk in enumerate(beamParameterBlocks):
+                bid = int(beam_numbers[idx])
+                
+                if bid in row_map:
+                    start_row = row_map[bid]
+                    # We write the 10 values into Column D (index 4)
+                    for i, value in enumerate(chunk):
+                        ws.cell(row=start_row + i, column=4).value = value
+                    print(f"Successfully updated Spot {bid} starting at Excel row {start_row}")
+                else:
+                    print(f"Warning: Could not find Spot {bid} in Column B of the Excel file.")
+
+            # 4. Save the file
             wb.save(file_path)
-                        
+
+            print("\n--- Verification Check (Excel Read-Back) ---")
+            wb_check = load_workbook(file_path, data_only=True)
+            ws_check = wb_check.active
+            
+            for bid, s_row in row_map.items():
+                # Global Amplitude is the 10th row in each block
+                excel_amp = ws_check.cell(row=s_row + 9, column=4).value
+                print(f"Verified Spot {bid}: Excel Global Amp = {excel_amp:.4f}")
+            del df          
             self.multibeam_flatness_optimiser_flag = False
 
         if self.beam_A_phase_optimiser_49_beams_flag:
@@ -1199,6 +1289,11 @@ class InteractiveGUI(QWidget):
             print('\n Analysing polarisation of 49 beams')
             pol_analyse_49_beams()
             self.pol_analyse_49_beams_flag=False
+
+        if self.multispot_pol_analysis_flag:
+            print('\n Analysing polarisation of n spots')
+            multispot_pol_analysis()
+            self.multispot_pol_analysis_flag=False
 
         if self.tilt_mapping_flag:
             print('Running tilt map sequence \n')

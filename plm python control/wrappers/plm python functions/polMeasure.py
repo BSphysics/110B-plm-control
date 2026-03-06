@@ -200,12 +200,12 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
     else:
         s1 = 'BeamA=' + str(global_amplitudes[0]) + ' BeamB=' + str(global_amplitudes[1])
 
-    # if multiBeamFilePath is not None:
-    #     base_name = os.path.basename(multiBeamFilePath)
-    #     base_name_no_ext = os.path.splitext(base_name)[0]  # remove .xlsx
-    #     s1 = 'Multibeam file__' + base_name_no_ext
-    # else:
-    #     s1 = ''
+    if multiBeamFilePath is not None:
+        base_name = os.path.basename(multiBeamFilePath)
+        base_name_no_ext = os.path.splitext(base_name)[0][-20:]  # remove .xlsx
+        s1 = 'Multibeam file__' + base_name_no_ext
+    else:
+        s1 = ''
 
     date_str = now.strftime("%Y_%m_%d")
     date_folder = os.path.join(os.getcwd(), 'Data', date_str)
