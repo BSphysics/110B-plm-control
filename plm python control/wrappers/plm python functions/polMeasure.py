@@ -205,7 +205,7 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
         base_name_no_ext = os.path.splitext(base_name)[0][-20:]  # remove .xlsx
         s1 = 'Multibeam file__' + base_name_no_ext
     else:
-        s1 = ''
+        s1 = 'Singlebeam__'
 
     date_str = now.strftime("%Y_%m_%d")
     date_folder = os.path.join(os.getcwd(), 'Data', date_str)

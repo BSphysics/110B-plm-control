@@ -113,4 +113,8 @@ def find_n_centroids(folder_name, n_spots):
     cn = contrast_norm(roi_sums)
     print(f"Brightest - dimmest spot (normalised to the mean) = {cn:.3f}")
 
+    # print("Detected spot positions:")
+    # for bid, (y, x) in zip(beam_numbers, centroids):
+    #     print(f"  Spot {bid}: y={y:.1f}, x={x:.1f}")
+
     return beam_numbers, centroids, roi_sums

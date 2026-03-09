@@ -20,6 +20,7 @@ from skimage.feature import peak_local_max
 import tkinter as tk
 from tkinter import filedialog
 from scipy.optimize import curve_fit
+import scipy.ndimage
 from matplotlib import patches
 
 def multispot_pol_analysis():
@@ -108,14 +109,34 @@ def multispot_pol_analysis():
         img_smooth = gaussian_filter(img_ref, sigma=1)
 
         # ========================================================
-        # FIND BRIGHT SPOTS
+        # FIND BRIGHT SPOTS - auto-detect single large vs multispot
         # ========================================================
 
-        coordinates = peak_local_max(
-            img_smooth,
-            min_distance=8,
-            threshold_abs=np.max(img_smooth) * PEAK_THRESHOLD_FRACTION
-        )
+        threshold = np.max(img_smooth) * PEAK_THRESHOLD_FRACTION
+        mask = img_smooth > threshold
+        labeled, n_regions = scipy.ndimage.label(mask)
+        region_sizes = [np.sum(labeled == i) for i in range(1, n_regions + 1)]
+        largest_region_size = max(region_sizes)
+
+        SINGLE_SPOT_PIXEL_THRESHOLD = 500  # tune this: single spot >> this, individual multispot peaks << this
+
+        if largest_region_size > SINGLE_SPOT_PIXEL_THRESHOLD:
+            # Single large spot — use intensity-weighted centroid
+            ys_all, xs_all = np.where(mask)
+            cy = int(np.round(np.average(ys_all, weights=img_smooth[ys_all, xs_all])))
+            cx = int(np.round(np.average(xs_all, weights=img_smooth[ys_all, xs_all])))
+            coordinates = np.array([[cy, cx]])
+            ROI_HALF_SIZE = 35
+            print("Single large spot detected - using intensity-weighted centroid")
+        else:
+            # Multiple spots — use peak finding as before
+            coordinates = peak_local_max(
+                img_smooth,
+                min_distance=8,
+                threshold_abs=threshold
+            )
+            ROI_HALF_SIZE = 6
+            print(f"Multispot pattern detected")
 
         print(f"Detected {len(coordinates)} bright spots\n")
 
@@ -251,6 +272,92 @@ def multispot_pol_analysis():
         
             full_fit_results[beam_number] = fit_results[idx]
         
+
+        if largest_region_size > SINGLE_SPOT_PIXEL_THRESHOLD:
+            # ============================================================
+            # PLOT 1: Grid of cropped images (5 across x 2 down)
+            # ============================================================
+            n_frames = imgs.shape[0]
+            n_cols = 5
+            n_rows = 2
+            n_show = min(n_cols * n_rows, n_frames)
+
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 6))
+            fig.suptitle("Cropped frames - " + os.path.basename(folder))
+
+            frame_indices = np.linspace(0, n_frames - 1, n_show, dtype=int)
+
+            for plot_idx, frame_idx in enumerate(frame_indices):
+                row = plot_idx // n_cols
+                col = plot_idx % n_cols
+                ax = axes[row, col]
+                ax.imshow(imgs_cropped[frame_idx], cmap='gray')
+                ax.set_title(f"Frame {frame_idx}\n({POLARISER_ANGLES[frame_idx]}°)", fontsize=8)
+                ax.axis('off')
+
+            plt.tight_layout()
+            plt.savefig(os.path.join(folder, os.path.basename(folder) + '__cropped_frames.png'), dpi=150)
+            plt.close('all')
+
+            # ============================================================
+            # PLOT 2: Raw data + fit for single spot
+            # ============================================================
+            if len(fit_results) > 0 and not np.isnan(fit_results[0][0]):
+                Ex, Ey, alpha, ellipticity = fit_results[0]
+                powers = powers_all[0]
+
+                # Reconstruct fit curve
+                coeffs, _, _, _ = np.linalg.lstsq(M, powers, rcond=None)
+                A, B, C = coeffs
+                theta_fine = np.linspace(0, np.max(POLARISER_ANGLES) * DEGREES, 300)
+                fit_curve = A + B * np.cos(2 * theta_fine) + C * np.sin(2 * theta_fine)
+
+                fig, ax = plt.subplots(figsize=(8, 5))
+                ax.plot(POLARISER_ANGLES, powers, 'o', markersize=6, label='Raw data')
+                ax.plot(theta_fine / DEGREES, fit_curve, '-', linewidth=2, label='Fit')
+                ax.set_xlabel('Polariser angle (degrees)')
+                ax.set_ylabel('Integrated intensity (counts)')
+                ax.set_title(f"Polarisation fit\nOrientation: {np.round(alpha*180/np.pi, 1)}°, Ellipticity b/a: {np.round(ellipticity, 4)}")
+                ax.legend()
+                plt.tight_layout()
+                plt.savefig(os.path.join(folder, os.path.basename(folder) + '__pol_fit.png'), dpi=150)
+                plt.close('all')
+
+        else:
+            # ============================================================
+            # PLOT: Full 7x7 grid of ellipses (existing multispot code)
+            # ============================================================
+            fig, axes = plt.subplots(7, 7, figsize=(12, 12))
+            fig.suptitle("Intensity Ellipses")
+
+            for idx in range(49):
+                col = idx // NROWS
+                row = idx % NROWS
+                ax = axes[row, col]
+                Ex, Ey, alpha, eE = full_fit_results[idx]
+
+                if not np.isnan(Ex):
+                    scale = 1 / max(Ex**2, Ey**2)
+                    ellipse = patches.Ellipse(
+                        (0, 0),
+                        Ex**2 * scale * 2.5,
+                        Ey**2 * scale * 2.5,
+                        angle=np.degrees(alpha),
+                        fill=False,
+                        linewidth=2
+                    )
+                    ax.add_patch(ellipse)
+
+                ax.text(0, -1.3, str(idx + 1), ha='center', fontsize=7)
+                ax.set_xlim(-1.2, 1.2)
+                ax.set_ylim(-1.2, 1.2)
+                ax.set_aspect('equal')
+                ax.axis('off')
+
+            plt.tight_layout()
+            plt.savefig(os.path.join(parent_folder, os.path.basename(folder) + '__' + os.path.splitext(os.path.basename(file_path))[0]))
+            plt.close('all')
+
         # ============================================================
         # PLOT FULL 7x7 GRID
         # ============================================================

@@ -159,7 +159,7 @@ class InteractiveGUI(QWidget):
         self.timer.start(100)  # Update every 100ms
         self.camera = camera
         self.ELLser = None
-        self.serial_port = 'COM4'  # Change this to your actual COM port
+        self.serial_port = 'COM6'  
         self.baudrate = 9600
 
         # Load saved corrections
@@ -1220,8 +1220,9 @@ class InteractiveGUI(QWidget):
                     print(f"Warning: Excel has Spot {actual_beam_id}, but it wasn't found in the image!")
 
                     # --- RENORMALISATION HERE ---
-                amps = beamParameterBlocks[:, 9]
-                beamParameterBlocks[:, 9] = amps / np.mean(amps)
+            amps = beamParameterBlocks[:, 9]
+            beamParameterBlocks[:, 9] = amps / np.mean(amps)
+            print(f"Post-renorm: mean={np.mean(beamParameterBlocks[:, 9]):.3f}, min={np.min(beamParameterBlocks[:, 9]):.3f}, max={np.max(beamParameterBlocks[:, 9]):.3f}")
 
             # from openpyxl import load_workbook
             # wb = load_workbook(file_path)
