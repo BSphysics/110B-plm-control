@@ -168,7 +168,7 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
         idx += 1      
     camera.StopGrabbing()
     print('\nSwitching back to free streaming')
-    camera.ExposureTimeAbs.SetValue(200)
+    camera.ExposureTimeAbs.SetValue(2000)
     camera.TriggerMode.SetValue("Off")        
     offset_x = 0
     offset_y = 0        
@@ -230,4 +230,4 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
 
     del all_images
 
-    return filename        
+    return filename , time_folder        

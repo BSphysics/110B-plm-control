@@ -159,7 +159,7 @@ class InteractiveGUI(QWidget):
         self.timer.start(100)  # Update every 100ms
         self.camera = camera
         self.ELLser = None
-        self.serial_port = 'COM6'  
+        self.serial_port = 'COM4'  
         self.baudrate = 9600
 
         # Load saved corrections
@@ -857,8 +857,10 @@ class InteractiveGUI(QWidget):
 
         if self.polarisation_measurement_flag:
             print('Polarisation measurement using rotating linear polariser')
-            pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , 400 , multiBeamFilePath=self.multibeam_file_path)
+            fname , folder_name = pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , 20000 , multiBeamFilePath=self.multibeam_file_path)
             self.polarisation_measurement_flag = False
+            filename = os.path.join(folder_name, 'GUI screenshot.png')
+            self.save_gui_screenshot(filename)
 
         if self.grab_50_flag:
             print('Grab and save 50 images using current plm config')
