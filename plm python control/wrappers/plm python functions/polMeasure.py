@@ -180,7 +180,7 @@ def pol_measure(camera, global_amplitudes, beamName, exposure_time, * , beamAPha
     camera.Height.SetValue(image_height)
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
-    cmd = "1ma" + "0000" + degreestoHex(83) + "\r\n"
+    cmd = "1ma" + "0000" + degreestoHex(48) + "\r\n"
     # print(cmd)
     ELLser.write(cmd.encode("utf-8"))
 
