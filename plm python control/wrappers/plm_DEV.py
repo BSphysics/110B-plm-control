@@ -745,6 +745,7 @@ class InteractiveGUI(QWidget):
                 value = 100
             print(f"Updated camera acquisition time: {value}")
             self.camera.ExposureTimeAbs.SetValue(value)
+            
         except ValueError:
             print("Invalid input — not a float")
 
@@ -857,7 +858,7 @@ class InteractiveGUI(QWidget):
 
         if self.polarisation_measurement_flag:
             print('Polarisation measurement using rotating linear polariser')
-            fname , folder_name = pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , 2000 , multiBeamFilePath=self.multibeam_file_path)
+            fname , folder_name = pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , self.camera.ExposureTimeAbs.GetValue() , multiBeamFilePath=self.multibeam_file_path)
             self.polarisation_measurement_flag = False
             filename = os.path.join(folder_name, 'GUI screenshot.png')
             self.save_gui_screenshot(filename)
