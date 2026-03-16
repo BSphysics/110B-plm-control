@@ -54,6 +54,7 @@ from multiBeamSequence import multi_beam_seq
 from polAnalyse49Beams import pol_analyse_49_beams
 from beamAPhaseOptimiser49Beams import beam_A_phase_optimiser_49_beams
 from multispotPolAnalysis import multispot_pol_analysis
+from loadPoincare import load_poincare
 
 import ctypes
 from PLMController import PLMController 
@@ -246,6 +247,8 @@ class InteractiveGUI(QWidget):
         self.multispot_pol_analysis_flag = False
         self.beam_A_phase_optimiser_49_beams_flag = False
         self.multibeam_file_path = None
+        self.poincare_file_path = None
+        self.poincare_beam_flag = False
 
         
         """Set up the GUI layout and widgets."""
@@ -550,13 +553,19 @@ class InteractiveGUI(QWidget):
         self.multispot_pol_analysis_button.clicked.connect(self.multispot_polarisation_analysis)
         self.middle_layout.addWidget(self.multispot_pol_analysis_button)
 
+        # Poincare beam button 
+        self.poincare_beam_button = QPushButton('Poincare Beam', self)
+        self.poincare_beam_button.setStyleSheet("background-color: Yellow; color: magenta;")
+        self.poincare_beam_button.clicked.connect(self.poincare_beam)
+        self.middle_layout.addWidget(self.poincare_beam_button)
+        
+        self.middle_layout.addStretch()
+
         # Slider button 
         self.slider_button = QPushButton('Slider toggle', self)
         self.slider_button.setStyleSheet("background-color: gray; color: yellow;")
         self.slider_button.clicked.connect(self.slider_UI)
         self.middle_layout.addWidget(self.slider_button)
-        
-        self.middle_layout.addStretch()
 
         label = QLabel("Camera acquisition time")
         input_box = QLineEdit(self)
@@ -725,6 +734,9 @@ class InteractiveGUI(QWidget):
         self.beam_A_phase_optimiser_49_beams_flag = True
         self.update_value()
 
+    def poincare_beam(self):
+        self.poincare_beam_flag = True
+        self.update_value()
 
     def slider_UI(self):
         if self.slider_flag:   # safeguard
@@ -893,6 +905,25 @@ class InteractiveGUI(QWidget):
             plm.play()
 
             move_slider_to_not_attenuator(self)
+
+        if self.poincare_beam_flag:
+            plm.pause_ui()
+            print('Entering Poincare Beam mode')
+            combinedComplex, poincare_file_path = load_poincare(self)
+            self.poincare_file_path = poincare_file_path
+            print('Poincare file path = ' + str(poincare_file_path))
+            amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
+            plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
+            self.poincare_beam_flag = False
+            plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (M, N, numHolograms)).astype(np.float32)
+            plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')
+                                        
+            plm.bitpack_and_insert_gpu(plm_frame, 1)
+            plm.resume_ui()
+            plm.set_frame(1)
+            time.sleep(0.2)
+            plm.play()
+            plm.play()
 
         if self.multibeam_seq_flag:
             plm.pause_ui()
