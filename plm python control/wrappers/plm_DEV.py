@@ -55,6 +55,7 @@ from polAnalyse49Beams import pol_analyse_49_beams
 from beamAPhaseOptimiser49Beams import beam_A_phase_optimiser_49_beams
 from multispotPolAnalysis import multispot_pol_analysis
 from loadPoincare import load_poincare
+from simulateCameraImage import simulate_camera_image
 
 import ctypes
 from PLMController import PLMController 
@@ -912,6 +913,7 @@ class InteractiveGUI(QWidget):
             combinedComplex, poincare_file_path = load_poincare(self)
             self.poincare_file_path = poincare_file_path
             print('Poincare file path = ' + str(poincare_file_path))
+            # intensity, field_ft = simulate_camera_image(combinedComplex , poincare_file_path)
             amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
             plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
             self.poincare_beam_flag = False
