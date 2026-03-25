@@ -896,7 +896,7 @@ class InteractiveGUI(QWidget):
             plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
             self.multibeam_flag = False
             plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (M, N, numHolograms)).astype(np.float32)
-            plm_frame = np.transpose(plm_frame, (1, 0, 2)).copy(order='F')
+            plm_frame = np.transpose(plm_frame, (1, 0, 2)).pycopy(order='F')
                                         
             plm.bitpack_and_insert_gpu(plm_frame, 1)
             plm.resume_ui()
