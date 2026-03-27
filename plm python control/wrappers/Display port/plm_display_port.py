@@ -32,7 +32,6 @@ from saveSuperPixelImages import save_super_pixel_images
 from wavefrontCorrection import wavefront_correction
 from phaseScanningFrameGenerator import phase_scanning_frame_generator
 from ampRampFrameGenerator import amp_ramp_frame_generator
-#from phaseScanAnalysor import phase_scan_analysor
 from findGlobalPhaseMinimum2 import find_global_phase_minimum_2
 from grab50Images import grab_50_images
 from tiltMapping import tilt_mapping
@@ -58,7 +57,7 @@ from loadPoincare import load_poincare
 from simulateCameraImage import simulate_camera_image
 
 import ctypes
-from PLMController import PLMController 
+from PLMController1 import PLMController 
 import time
 
 import nidaqmx
@@ -108,7 +107,7 @@ HGboxNames = ['Beam A HG mode (n, m)', 'Beam B HG mode (n,m)']
 beamWaistboxNames = ['Beam A waist (x, y)', 'Beam B waist (x,y)']
 beamCentreboxNames = ['Beam A centre (x, y)', 'Beam B centre (x,y)']
 
-frames = 70
+frames = 64
 N = 1358
 M = 800
 
@@ -117,25 +116,65 @@ numHolograms = 24
 
 # Create PLMController instance
 plm = PLMController(frames, cols, rows, fullpath, 1920 , 0)
-# Start the UI
-monitor_id = 1
+
+plm.close()
+time.sleep(2)
+plm.open()
+
+phase_levels = np.array([0.004, 0.017, 0.036, 0.058, 0.085, 0.117, 0.157, 0.217, 0.296, 0.4, 0.5, 0.605, 0.713, 0.82, 0.922, 0.981, 1], dtype=np.float32)
+plm.set_lookup_table(np.asfortranarray(phase_levels))
+
+# set phase map
+phase_map = np.array([
+    [0, 0, 0, 0],
+    [1, 0, 0, 0],
+    [0, 1, 0, 0],
+    [1, 1, 0, 0],
+    [0, 0, 1, 0],
+    [1, 0, 1, 0],
+    [0, 1, 1, 0],
+    [1, 1, 1, 0],
+    [0, 0, 0, 1],
+    [1, 0, 0, 1],
+    [0, 1, 0, 1],
+    [1, 1, 0, 1],
+    [0, 0, 1, 1],
+    [1, 0, 1, 1],
+    [0, 1, 1, 1],
+    [1, 1, 1, 1],
+])
+
+# v = np.array([14, 1, 10, 6, 2, 15, 11, 7, 3, 16, 12, 8, 4, 13, 9, 5])-1
+# # v = np.array([13, 9, 5, 14, 1, 10, 4, 6, 2, 15, 11, 7, 3, 16, 12, 8])-1 # from Jose
+# import itertools
+# arrangements = list(itertools.product([0, 1], repeat=4))
+# array = np.array(arrangements)
+# phase_map_order = np.fliplr(array[v,:])
+# phase_map = phase_map[phase_map_order,:]
+
+phase_map_order = (14, 1, 10, 6, 2, 15, 11, 7, 3, 16, 12, 8, 4, 13, 9, 5)
+phase_map_order = tuple(x - 1 for x in phase_map_order)
+phase_map = phase_map[phase_map_order,:]
+plm.set_phase_map(phase_map)
+plm.configure(1, 2)   # ← use your built-in safe method
+time.sleep(3)   # ← ADD THIS (important)
+
 plm.start_ui()
 
-phase_levels = np.array([0.004, 0.017, 0.036, 0.058, 0.085, 0.117, 0.157, 0.217, 0.296, 0.4, 0.5, 0.605, 0.713, 0.82, 0.922, 0.981, 1], dtype=np.float32);
-plm.set_lookup_table(np.asfortranarray(phase_levels));
+time.sleep(2)   # ← also useful
+
+plm.play()
+plm.play()
+
 
 import itertools
 arrangements = list(itertools.product([0, 1], repeat=4))
 array = np.array(arrangements)
-v = np.array([14, 1, 10, 6, 2, 15, 11, 7, 3, 16, 12, 8, 4, 13, 9, 5])-1
+#v = np.array([14, 1, 10, 6, 2, 15, 11, 7, 3, 16, 12, 8, 4, 13, 9, 5])-1
 # v = np.array([13, 9, 5, 14, 1, 10, 4, 6, 2, 15, 11, 7, 3, 16, 12, 8])-1 # from Jose
 
-phase_map_order = np.fliplr(array[v,:])
+#phase_map_order = np.fliplr(array[v,:])
 #plm.set_phase_map((phase_map_order)) 
-
-time.sleep(1)
-#plm.play()
-#plm.play()
 
 import json
 CONFIG_FILE = "beam_config.json"

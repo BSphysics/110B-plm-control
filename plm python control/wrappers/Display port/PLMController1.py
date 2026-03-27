@@ -22,7 +22,11 @@ class PLMController:
         self.y0 = y0
         
         # Load the 'plmctrl' library
-        self.lib = ctypes.CDLL(dll_path)
+        # self.lib = ctypes.CDLL(dll_path)
+        try:
+            self.lib = ctypes.CDLL(dll_path)
+        except OSError as e:
+            print("DLL load failed:", e)
         
         # Define function prototypes with argtypes and restype
         self.lib.SetPLMWindowPos.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
@@ -435,7 +439,7 @@ class PLMController:
         self.set_pixel_mode(connection_type)
         
         # Check and set connection type if not already 1
-        if self.get_connection_type() != 1:
+        if self.get_connection_type() != connection_type:
             self.set_connection_type(connection_type)
             time.sleep(5.5)  # Wait
         
@@ -445,6 +449,12 @@ class PLMController:
         
         # Update LUT with play mode and connection type
         self.update_lut(play_mode, connection_type)
+
+    def close(self):
+        res = self.lib.Close()
+        if res == -1:
+            raise RuntimeError("Failed to close PLM connection")
+        return res
 
     def cleanup(self):
         """Cleanup and unload the PLM library."""
