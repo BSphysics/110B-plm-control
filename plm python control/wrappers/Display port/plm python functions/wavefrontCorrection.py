@@ -66,7 +66,7 @@ def wavefront_correction(all_images, saveFolder, beamName):
     brightest_idx = np.argmax(int_img_sum)
 
     last_high_kurt_image = gaussian_filter(all_images[last_index],3)
-    mask = last_high_kurt_image > 5
+    mask = last_high_kurt_image > 3
     # Compute the centroid
 
     rows, cols = np.indices(last_high_kurt_image.shape)
