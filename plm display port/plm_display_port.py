@@ -64,6 +64,8 @@ from PLMController import PLMController
 import time
 
 import nidaqmx
+from nidaqmx.constants import TerminalConfiguration
+from collections import deque
 
 #----------------------------------Basler camera config
 from pypylon import pylon
@@ -183,6 +185,30 @@ class InteractiveGUI(QWidget):
         self.timer.timeout.connect(self.update_camera_feed)
         self.timer.start(100)  # Update every 100ms
         self.camera = camera
+#****************************************************
+
+        # ---- NI DAQ setup (PCI-6110, AI1 via BNC-2110) ----
+        self.daq_history_seconds = 30      # how much history the plot shows
+        self.daq_poll_ms = 100             # 10 Hz polling
+        self.daq_history_len = int(self.daq_history_seconds * 1000 / self.daq_poll_ms)
+        self.daq_times = deque(maxlen=self.daq_history_len)
+        self.daq_volts = deque(maxlen=self.daq_history_len)
+        self.daq_t0 = time.time()
+        try:
+            self.daq_task = nidaqmx.Task()
+            self.daq_task.ai_channels.add_ai_voltage_chan(
+                "Dev1/ai1",
+                terminal_config=TerminalConfiguration.DIFF,
+                min_val=-10.0, max_val=10.0,
+            )
+            self.daq_timer = QTimer(self)
+            self.daq_timer.timeout.connect(self.update_daq_reading)
+            self.daq_timer.start(self.daq_poll_ms)
+        except Exception as e:
+            print(f"Warning: Could not initialise NI DAQ (Dev1/ai1): {e}")
+            self.daq_task = None
+
+#****************************************************
         self.ELLser = None
         self.serial_port = 'COM4'  
         self.baudrate = 9600
@@ -641,6 +667,28 @@ class InteractiveGUI(QWidget):
         self.canvas2 = FigureCanvas(self.figure2)
         self.figure_layout.addWidget(self.canvas2, 1, 0)  # Below first figure
         self.line, = self.ax3.plot([], [], 'b-')
+
+                # ======= DAQ panel (Dev1/ai1) =======
+        self.daq_panel = QWidget()
+        daq_layout = QVBoxLayout(self.daq_panel)
+        self.daq_label = QLabel("AI1: --- V")
+        font = self.daq_label.font()
+        font.setPointSize(14)
+        font.setBold(True)
+        self.daq_label.setFont(font)
+        daq_layout.addWidget(self.daq_label)
+
+        self.daq_figure, self.daq_ax = plt.subplots(figsize=(6, 2))
+        self.daq_canvas = FigureCanvas(self.daq_figure)
+        self.daq_line, = self.daq_ax.plot([], [], '-')
+        self.daq_ax.set_xlabel("Time (s)")
+        self.daq_ax.set_ylabel("AI1 (V)")
+        self.daq_ax.set_xlim(-self.daq_history_seconds, 0)
+        self.daq_ax.set_ylim(-1, 1)
+        self.daq_figure.tight_layout()
+        daq_layout.addWidget(self.daq_canvas)
+
+        self.figure_layout.addWidget(self.daq_panel, 2, 0)
         
         # ======= Add Layouts to Main Layout =======
         self.main_layout.addLayout(self.control_layout, 1)  # Buttons take 1 part width
@@ -1877,10 +1925,45 @@ class InteractiveGUI(QWidget):
 
                
 
+    # def closeEvent(self, event):
+    #     """Gracefully stops the camera when the window is closed."""
+    #     self.camera.StopGrabbing()
+    #     self.camera.Close()
+    #     event.accept()
+    def update_daq_reading(self):
+        """Read one sample from Dev1/ai1 and update the live display."""
+        if self.daq_task is None:
+            return
+        try:
+            v = self.daq_task.read()
+            t = time.time() - self.daq_t0
+            self.daq_times.append(t)
+            self.daq_volts.append(v)
+            self.daq_label.setText(f"AI1: {v:+.4f} V")
+
+            # Rolling x-window: most recent point at 0, history extending left
+            t_rel = [tt - t for tt in self.daq_times]
+            self.daq_line.set_data(t_rel, list(self.daq_volts))
+
+            # Autoscale y with a small margin; keep x window fixed
+            if self.daq_volts:
+                vmin, vmax = min(self.daq_volts), max(self.daq_volts)
+                pad = max(0.05, 0.1 * (vmax - vmin))
+                self.daq_ax.set_ylim(vmin - pad, vmax + pad)
+            self.daq_canvas.draw_idle()
+        except Exception as e:
+            print(f"DAQ read failed: {e}")
+
     def closeEvent(self, event):
-        """Gracefully stops the camera when the window is closed."""
+        """Gracefully stops the camera and DAQ when the window is closed."""
         self.camera.StopGrabbing()
         self.camera.Close()
+        if getattr(self, "daq_task", None) is not None:
+            try:
+                self.daq_timer.stop()
+                self.daq_task.close()
+            except Exception as e:
+                print(f"DAQ shutdown warning: {e}")
         event.accept()
 
 # Run the application
