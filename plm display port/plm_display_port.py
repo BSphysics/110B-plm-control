@@ -179,13 +179,7 @@ class InteractiveGUI(QWidget):
             print("Warning: Failed to initialize trigger line low:", e)
 
         self.settings = QSettings("plm_GUI")
-        self.init_ui()
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_camera_feed)
-        self.timer.start(100)  # Update every 100ms
-        self.camera = camera
-#****************************************************
+        #****************************************************
 
         # ---- NI DAQ setup (PCI-6110, AI1 via BNC-2110) ----
         self.daq_history_seconds = 30      # how much history the plot shows
@@ -207,6 +201,14 @@ class InteractiveGUI(QWidget):
         except Exception as e:
             print(f"Warning: Could not initialise NI DAQ (Dev1/ai1): {e}")
             self.daq_task = None
+
+        self.init_ui()
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_camera_feed)
+        self.timer.start(100)  # Update every 100ms
+        self.camera = camera
+
 
 #****************************************************
         self.ELLser = None
@@ -668,10 +670,10 @@ class InteractiveGUI(QWidget):
         self.figure_layout.addWidget(self.canvas2, 1, 0)  # Below first figure
         self.line, = self.ax3.plot([], [], 'b-')
 
-                # ======= DAQ panel (Dev1/ai1) =======
+        # ======= DAQ panel (Dev1/ai1) =======
         self.daq_panel = QWidget()
         daq_layout = QVBoxLayout(self.daq_panel)
-        self.daq_label = QLabel("AI1: --- V")
+        self.daq_label = QLabel("PMT output (V)")
         font = self.daq_label.font()
         font.setPointSize(14)
         font.setBold(True)
@@ -684,7 +686,7 @@ class InteractiveGUI(QWidget):
         self.daq_ax.set_xlabel("Time (s)")
         self.daq_ax.set_ylabel("AI1 (V)")
         self.daq_ax.set_xlim(-self.daq_history_seconds, 0)
-        self.daq_ax.set_ylim(-1, 1)
+        self.daq_ax.set_ylim(0, 10)
         self.daq_figure.tight_layout()
         daq_layout.addWidget(self.daq_canvas)
 
