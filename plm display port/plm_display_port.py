@@ -32,6 +32,7 @@ from saveSuperPixelImages import save_super_pixel_images
 from wavefrontCorrection import wavefront_correction
 from phaseScanningFrameGenerator import phase_scanning_frame_generator
 from ampRampFrameGenerator import amp_ramp_frame_generator
+from ampRampFrameGenerator_v2 import amp_ramp_frame_generator_v2
 from findGlobalPhaseMinimum2 import find_global_phase_minimum_2
 from grab50Images import grab_50_images
 from tiltMapping import tilt_mapping
@@ -42,7 +43,6 @@ from moveSliderToNotAttenuator import move_slider_to_not_attenuator
 from cameraUtils import enable_hardware_trigger
 from loadLastPhaseCorrections import load_last_phase_corrections
 from savePhaseFile import save_phase_file
-
 
 from applyDarkTheme import apply_dark_theme
 from applyDarkPlotTheme import apply_dark_plot_theme
@@ -192,9 +192,10 @@ class InteractiveGUI(QWidget):
             self.daq_task = nidaqmx.Task()
             self.daq_task.ai_channels.add_ai_voltage_chan(
                 "Dev1/ai1",
-                terminal_config=TerminalConfiguration.DIFF,
+                terminal_config=TerminalConfiguration.PSEUDO_DIFF,
                 min_val=-10.0, max_val=10.0,
             )
+            print("DAQ startup test read:", self.daq_task.read()) 
             self.daq_timer = QTimer(self)
             self.daq_timer.timeout.connect(self.update_daq_reading)
             self.daq_timer.start(self.daq_poll_ms)
@@ -1440,12 +1441,25 @@ class InteractiveGUI(QWidget):
             slider(self)
             self.slider_flag = False
 
-        if self.amp_ramp_frame_flag:
+        if self.amp_ramp_frame_flag:    
+            from PyQt5.QtWidgets import QInputDialog
+            choice, ok = QInputDialog.getItem(
+                self, "Rotation", "Total rotation across 24 frames (deg):",
+                ["180", "360", "720"], 1, False)
+            total_rotation_deg = float(choice) if ok else 360.0
+
             plm.pause_ui()
-            print('Bitpacking amplitude ramp frame')
-            amp_ramp_scan_frame = amp_ramp_frame_generator (beamA_phase, beamB_phase, beamA_HG_amplitude, beamB_HG_amplitude )
-            print("amp_ramp_scan_frame = "+ str(np.shape(amp_ramp_scan_frame)))
+            print(f'Bitpacking amplitude ramp frame ({total_rotation_deg:.0f} deg)')
+            
+            amp_ramp_scan_frame = amp_ramp_frame_generator_v2(
+                            beamA_phase, beamB_phase, beamA_HG_amplitude, beamB_HG_amplitude,
+                            total_rotation_deg=total_rotation_deg,
+                            global_phase_A_pct=self.user_values[18],
+                            global_phase_B_pct=self.user_values[19])
+
+            print("amp_ramp_scan_frame = " + str(np.shape(amp_ramp_scan_frame)))
             plm.bitpack_and_insert_gpu(amp_ramp_scan_frame, 2)
+
             plm.resume_ui()
             plm.set_frame(2)
             time.sleep(0.2)
@@ -1482,15 +1496,27 @@ class InteractiveGUI(QWidget):
             self.camera.TriggerSource.SetValue("Line1")  
             self.camera.TriggerSelector.SetValue("FrameStart")
             self.camera.TriggerMode.SetValue("On")  # Enable per-frame trigger
-            
             self.camera.TriggerActivation.SetValue("RisingEdge")
+
             image_height = 90
             image_width = 112
             self.camera.Width.SetValue(image_width)
             self.camera.Height.SetValue(image_height)
 
-            offset_x = 208
-            offset_y = 150            
+            # Centre the ROI on the most recently found centroid
+            if self.centroid_x is None or self.centroid_y is None:
+                print("Warning: No beam centroid found — falling back to default offsets. "
+                      "Run free-streaming and 'Grab Centroid' first.")
+                offset_x, offset_y = 208, 150
+            else:
+                print(f"Using centroid: x={self.centroid_x}, y={self.centroid_y}")
+                offset_x, offset_y = hardware_trigger_roi_offset(
+                    self.centroid_x, self.centroid_y,
+                    roi_width=image_width,
+                    roi_height=image_height,
+                )
+                print(f"Computed offsets: x={offset_x}, y={offset_y}")
+
             self.camera.OffsetX.SetValue(offset_x)
             self.camera.OffsetY.SetValue(offset_y)
 
@@ -1553,6 +1579,10 @@ class InteractiveGUI(QWidget):
                        
             print('\nAll images acquired')
             folder_name = save_super_pixel_images(all_images, '_Amp ramp')
+            src = 'amp_ramp_settings.txt'
+            if os.path.exists(src):
+                shutil.move(src, os.path.join(folder_name, 'amp_ramp_settings.txt'))
+
             timing_file = os.path.join(folder_name, "timing_data.csv")
             header = "frame_idx,blockID,timestamp_ticks,delta_t_seconds"
             timing_log_clean = timing_log.copy()
@@ -1952,7 +1982,8 @@ class InteractiveGUI(QWidget):
                 vmin, vmax = min(self.daq_volts), max(self.daq_volts)
                 pad = max(0.05, 0.1 * (vmax - vmin))
                 self.daq_ax.set_ylim(vmin - pad, vmax + pad)
-            self.daq_canvas.draw_idle()
+            # self.daq_canvas.draw_idle()
+            self.daq_canvas.draw()
         except Exception as e:
             print(f"DAQ read failed: {e}")
 
