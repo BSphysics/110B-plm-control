@@ -717,7 +717,7 @@ class InteractiveGUI(QWidget):
         for i, widget in enumerate(self.inputs):
             if isinstance(widget, QLineEdit):
                 self.settings.setValue(f"input_{i}", widget.text())
-                self.close()
+        self.close()
 
     def toggle_button(self, idx):
         """Toggles the button state between True and False."""
@@ -991,24 +991,23 @@ class InteractiveGUI(QWidget):
             self.grab_50_flag = False
 
         if self.multibeam_flag:
-            plm.pause_ui()
-            print('Entering multibeam mode')
-            combinedComplex, multibeam_file_path = load_multibeam_data(self)
-            self.multibeam_file_path = multibeam_file_path
-            self.poincare_file_path = None
-            print('Multibeam file path = ' + str(multibeam_file_path))
-            amplitude_modulated_combined_phase = amp_mod_phase(combinedComplex) 
-            plm_phase_map = (amplitude_modulated_combined_phase + np.pi) / (2*np.pi)
             self.multibeam_flag = False
-            plm_frame = np.broadcast_to(plm_phase_map[:, :, None], (M, N, numHolograms)).astype(np.float32)
-            plm_frame = np.transpose(plm_frame, (1, 0, 2)).pycopy(order='F')
-                                        
-            plm.bitpack_and_insert_gpu(plm_frame, 1)
-            plm.resume_ui()
-            plm.set_frame(1)
-            time.sleep(0.2)
-            plm.play()
-            plm.play()
+            combinedComplex, multibeam_file_path = load_multibeam_data(self)
+            if combinedComplex is not None:
+                self.multibeam_file_path = multibeam_file_path
+                self.poincare_file_path = None
+                plm_phase_map = (amp_mod_phase(combinedComplex) + np.pi) / (2 * np.pi)
+                plm_frame = np.empty((numHolograms, M, N), dtype=np.float32)
+                np.copyto(plm_frame, plm_phase_map[None, :, :])
+                plm.pause_ui()
+                try:
+                    plm.bitpack_and_insert_gpu(plm_frame, 1)
+                finally:
+                    plm.resume_ui()
+                plm.set_frame(1)
+                time.sleep(0.2)
+                plm.play(); plm.play()
+                move_slider_to_not_attenuator(self)
 
             move_slider_to_not_attenuator(self)
 
