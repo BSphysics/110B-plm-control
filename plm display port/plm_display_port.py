@@ -58,6 +58,9 @@ from simulateCameraImage import simulate_camera_image
 from plough_pol_analyser import plough_pol
 from bigSpotPolAnalyser import big_spot_pol_analyser
 from hardwareTriggerROIOffset import hardware_trigger_roi_offset
+from singleSpotPolAnalysis import single_spot_pol_analysis
+from qwpCalibration import qwp_calibration
+from polMeasure import pol_measure, stokes_measure
 
 import ctypes
 from PLMController import PLMController 
@@ -215,6 +218,7 @@ class InteractiveGUI(QWidget):
         self.ELLser = None
         self.serial_port = 'COM4'  
         self.baudrate = 9600
+        self.slider_serial_no = "10600312"
 
         # Load saved corrections
         load_last_phase_corrections(
@@ -304,6 +308,8 @@ class InteractiveGUI(QWidget):
         self.poincare_beam_flag = False
         self.plough_pol_flag = False
         self.big_spot_pol_flag = False
+        self.qwp_cal_flag = False
+        self.stokes_flag = False
 
         
         """Set up the GUI layout and widgets."""
@@ -548,6 +554,17 @@ class InteractiveGUI(QWidget):
         self.polarisation_measurement_button = QPushButton('Polarisation measurement', self)
         self.polarisation_measurement_button.clicked.connect(self.polarisation_measurement)
         self.middle_layout.addWidget(self.polarisation_measurement_button)   
+
+        self.qwp_cal_button = QPushButton('QWP calibration', self)
+        self.qwp_cal_button.clicked.connect(self.qwp_cal)
+        self.middle_layout.addWidget(self.qwp_cal_button)
+
+        self.stokes_button = QPushButton('Stokes measurement', self)
+        self.stokes_button.clicked.connect(self.stokes_meas)
+        self.middle_layout.addWidget(self.stokes_button)
+        
+
+
 
         # Grab 50 images button
         self.grab_50_button = QPushButton('Grab 50 images', self)
@@ -835,6 +852,14 @@ class InteractiveGUI(QWidget):
         self.big_spot_pol_flag = True
         self.update_value()
 
+    def qwp_cal(self):
+        self.qwp_cal_flag = True
+        self.update_value()
+
+    def stokes_meas(self):
+        self.stokes_flag = True
+        self.update_value()
+
     def slider_UI(self):
         if self.slider_flag:   # safeguard
             return
@@ -965,12 +990,38 @@ class InteractiveGUI(QWidget):
         self.clear_beam_A_correction_flag = False
         self.clear_beam_B_correction_flag = False
 
+        if self.qwp_cal_flag:
+            self.qwp_cal_flag = False
+            amp_A, amp_B = self.user_values[16], self.user_values[17]
+            try:
+                if amp_B == 0 and amp_A != 0:
+                    qwp_calibration(self, self.camera, phi_A_guess=93.9)                 # calibrate on A
+                elif amp_A == 0 and amp_B != 0:
+                    qwp_calibration(self, self.camera, phi_A_guess=0.4, channel="B")     # B's state
+                else:
+                    print("Show ONE channel only (other amplitude 0) and Bitpack first.")
+            except Exception as e:
+                print(f"QWP calibration failed: {e}")
+
         if self.polarisation_measurement_flag:
+            self.polarisation_measurement_flag = False          # reset first
             print('Polarisation measurement using rotating linear polariser')
-            fname , folder_name = pol_measure(self.camera, global_amplitudes, '_Rotating linear polariser_' , self.camera.ExposureTimeAbs.GetValue() , multiBeamFilePath=self.multibeam_file_path, poincareBeamFilePath = self.poincare_file_path)
-            self.polarisation_measurement_flag = False
-            filename = os.path.join(folder_name, 'GUI screenshot.png')
-            self.save_gui_screenshot(filename)
+            try:
+                fname, folder_name = pol_measure(
+                    self.camera, global_amplitudes, '_Rotating linear polariser_',
+                    self.camera.ExposureTimeAbs.GetValue(),
+                    multiBeamFilePath=self.multibeam_file_path,
+                    poincareBeamFilePath=self.poincare_file_path,
+                    beam_phases=(self.user_values[18], self.user_values[19]))
+            except Exception as e:
+                print(f"Polarisation measurement failed: {e}")
+                self.switch_to_free_streaming()
+            else:
+                self.save_gui_screenshot(os.path.join(folder_name, 'GUI screenshot.png'))
+                try:
+                    single_spot_pol_analysis(fname)
+                except Exception as e:
+                    print(f"Polarisation analysis skipped: {e}")
 
         if self.plough_pol_flag: 
             plough_pol()
@@ -979,6 +1030,18 @@ class InteractiveGUI(QWidget):
         if self.big_spot_pol_flag: 
             big_spot_pol_analyser()
             self.big_spot_pol_flag = False
+
+        if self.stokes_flag:
+            self.stokes_flag = False
+            try:
+                stokes_measure(self.camera, global_amplitudes, 'Stokes',
+                               self.camera.ExposureTimeAbs.GetValue(),
+                               multiBeamFilePath=self.multibeam_file_path,
+                               poincareBeamFilePath=self.poincare_file_path,
+                               beam_phases=(self.user_values[18], self.user_values[19]))
+            except Exception as e:
+                print(f"Stokes measurement failed: {e}")
+                self.switch_to_free_streaming()
 
         if self.grab_50_flag:
             print('Grab and save 50 images using current plm config')
