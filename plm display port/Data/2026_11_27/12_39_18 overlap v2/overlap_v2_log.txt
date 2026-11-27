@@ -1,0 +1,40 @@
+Predicted chromatic floor (6.6 nm FWHM): 0.15 %  [dnu_AB = [ 0.0708 -0.0021] cyc/px, rms hologram extent along dnu = 50 px]
+Auto-exposure
+  exposure 20000 us -> peak 16.8
+  exposure 182143 us -> peak 157.4
+Coarse alignment (centroid Newton)
+  centroid A [286.95 242.61], B [286.82 242.12]; Jacobian (px per cycle/px):
+[[ 4274.    342.2]
+ [  320.7 -4632. ]]
+  Newton 0: |A-B| = 0.152 px
+  ROI: 2102 px
+  P_B/P_A = 0.996 -> amplitude ratio rho = 1.0018
+Start of fine search: null = 5.35 %
+Budget before fine search: null 5.35 %  ->  amplitude 0.07 + wavefront 0.54 + decoherence 4.75 %  (4-step drift indicator 0.50 %: if comparable to the null, drift during the measurement is limiting)
+  camera-plane relative phase fit (rad, px units): tilt_x +0.018, tilt_y -0.00476, defocus -0.000165, astig0 -0.00011, astig45 -0.0003
+Pass 1
+  dnu_x      eps[-2h..2h] =  4.53  5.25  4.95  4.92  4.83 %  -> move -2.00 h (best-sample), value -0.0001816
+  dnu_y      eps[-2h..2h] =  5.00  5.47  5.19  4.89  5.02 %  -> move +1.00 h (best-sample), value +8.424e-05
+  z_defocus  eps[-2h..2h] =  6.45  6.28  4.93  4.85  4.70 %  -> move +2.00 h (parabola), value +0.5
+  z_astig0   eps[-2h..2h] =  4.92  5.69  5.09  4.62  4.55 %  -> move +2.00 h (best-sample), value +0.5
+  z_astig45  eps[-2h..2h] =  5.24  4.90  4.89  5.68  4.14 %  -> move +2.00 h (best-sample), value +0.5
+  z_coma_x   eps[-2h..2h] =  5.07  4.67  5.74  5.28  4.39 %  -> move +2.00 h (best-sample), value +0.4
+  z_coma_y   eps[-2h..2h] =  6.12  3.95  5.06  4.76  4.99 %  -> move +0.12 h (parabola), value +0.0236
+  P_B/P_A = 0.988 -> amplitude ratio rho = 1.0081
+  end of pass: null ~ 5.06 %
+Pass 2
+  dnu_x      eps[-2h..2h] =  5.67  5.26  5.15  4.37  5.30 %  -> move +0.59 h (parabola), value -8.41e-05
+  dnu_y      eps[-2h..2h] =  4.57  5.36  5.17  5.69  5.76 %  -> move -2.00 h (best-sample), value -0.0004783
+  z_defocus  eps[-2h..2h] =  5.00  4.68  5.12  6.79  6.15 %  -> move -2.00 h (parabola), value +0
+  z_astig0   eps[-2h..2h] =  5.45  5.54  5.31  5.73  4.15 %  -> move +2.00 h (best-sample), value +1.25
+  z_astig45  eps[-2h..2h] =  5.11  6.41  4.84  5.64  5.05 %  -> move +0.00 h (best-sample), value +0.5
+  z_coma_x   eps[-2h..2h] =  4.84  5.17  5.82  6.02  4.41 %  -> move +2.00 h (best-sample), value +1
+  z_coma_y   eps[-2h..2h] =  5.90  3.67  5.26  5.38  5.64 %  -> move -0.41 h (parabola), value -0.026
+  P_B/P_A = 1.006 -> amplitude ratio rho = 1.0049
+  end of pass: null ~ 5.26 %
+Final measurement
+Budget at optimum: null 5.64 %  ->  amplitude 0.30 + wavefront 0.39 + decoherence 4.96 %  (4-step drift indicator 0.71 %: if comparable to the null, drift during the measurement is limiting)
+  camera-plane relative phase fit (rad, px units): tilt_x +0.0155, tilt_y -0.00236, defocus +0.000161, astig0 +0.00022, astig45 -0.000161
+  null (4-step fit) = 5.65 %, null (HDR x5.5) = 6.00 %, dark-noise floor = 0.006 %
+Verification with GUI-formula hologram: null = 5.36 %
+New B periods: x 47.8407, y 11.3941; amplitudes A 0.756 B 1.000; null phase (Beam A global phase) 83.87 %

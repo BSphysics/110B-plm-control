@@ -1,5 +1,6 @@
 
 import os
+os.environ.setdefault("FOR_DISABLE_CONSOLE_CTRL_HANDLER", "1")
 scriptDir = os.getcwd()
 import sys
 sys.path.append(os.path.join(scriptDir,"plm python functions" ))
@@ -61,6 +62,8 @@ from hardwareTriggerROIOffset import hardware_trigger_roi_offset
 from singleSpotPolAnalysis import single_spot_pol_analysis
 from qwpCalibration import qwp_calibration
 from polMeasure import pol_measure, stokes_measure
+from linearTarget import linear_optimiser, delay_meter
+from overlapOptimiser_v2 import OverlapConfig
 
 import ctypes
 from PLMController import PLMController 
@@ -1488,15 +1491,36 @@ class InteractiveGUI(QWidget):
             tilt_mapping(self, plm, camera)
             self.tilt_mapping_flag = False 
 
-        if self.overlap_optimiser_flag:
-            print('Attempting to optimise overlap of Beam B with Beam A')
-            newBxTilt , newByTilt , zero_phase = overlap_optimiser(self, plm, camera)
-            # Update the GUI text boxes with the new values
-            self.inputs[2].setText(f"{newBxTilt:.4f}")
-            self.inputs[3].setText(f"{newByTilt:.4f}")
-            self.inputs[18].setText(f"{zero_phase:.2f}")
+        # if self.overlap_optimiser_flag:
+        #     print('Attempting to optimise overlap of Beam B with Beam A')
+        #     newBxTilt , newByTilt , zero_phase = overlap_optimiser(self, plm, camera)
+        #     # Update the GUI text boxes with the new values
+        #     self.inputs[2].setText(f"{newBxTilt:.4f}")
+        #     self.inputs[3].setText(f"{newByTilt:.4f}")
+        #     self.inputs[18].setText(f"{zero_phase:.2f}")
 
-            self.overlap_optimiser_flag = False
+        if self.overlap_optimiser_flag:
+            from PyQt5.QtWidgets import QInputDialog
+            choice, ok = QInputDialog.getItem(
+                self, 'Overlap Optimiser', 'Run:',
+                ['Linear optimiser', 'Delay meter (5 min)'], 0, False)
+            try:
+                if ok and choice.startswith('Delay'):
+                    delay_meter(self, plm, camera, duration_s=300)
+                elif ok:
+                    print('Optimising A+B to a linear state on the A/B bisector')
+                    newBxTilt, newByTilt, zero_phase = linear_optimiser(
+                        self, plm, camera, target="D",
+                        cfg=OverlapConfig(bandwidth_nm=6.6, wavelength_nm=801.0, max_passes=2))
+                    self.inputs[2].setText(f"{newBxTilt:.4f}")
+                    self.inputs[3].setText(f"{newByTilt:.4f}")
+                    self.inputs[18].setText(f"{zero_phase:.2f}")
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f'Stopped: {e}')
+            finally:
+                self.overlap_optimiser_flag = False
 
         if self.slider_flag:
             print('Slider')

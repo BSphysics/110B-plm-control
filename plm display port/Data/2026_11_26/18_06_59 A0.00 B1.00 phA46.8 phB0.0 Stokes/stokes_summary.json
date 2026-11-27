@@ -1,0 +1,31 @@
+{
+  "azimuth_rel_A_deg": 86.9642252007111,
+  "azimuth_err_deg": 1.022612039848982,
+  "chi_deg": 0.5446606577604768,
+  "chi_err_deg": 0.17269974259213705,
+  "ellipticity": 0.009506408138862839,
+  "dop": 0.9999999999999999,
+  "dop_err": 0.011268183655434845,
+  "theta0_fit_deg": 39.33511716370315,
+  "theta0_change_deg": -0.32606100915502517,
+  "rms_resid_frac": 0.026573796523662527,
+  "roi_centre_xy": [
+    284,
+    251
+  ],
+  "roi_radius_px": 10.071067811865476,
+  "n_settings": 48,
+  "saturated_frames": 0,
+  "bin_px": 2,
+  "fast_axis_offset_deg": 0.0,
+  "date": "2026-11-26T18:06:59",
+  "beam_name": "Stokes",
+  "global_amplitudes": [
+    0.0,
+    1.0
+  ],
+  "beam_phases": [
+    46.8,
+    0.0
+  ]
+}

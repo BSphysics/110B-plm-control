@@ -1,0 +1,4 @@
+Channels: A at 0, B at 86.48 deg (rel. A).  Target linear azimuth 43.24 deg rel. A.  Analyser: polariser crossed, QWP parallel (transparent).
+Analyser at P = 54.39, Q = 93.52 deg (stage read-back)
+RESULT at 43.24 deg: eps = 4.279 % (+/- 0.004) of the power is not in the target linear state -> |dpsi|, |chi| <= 11.85 deg, DOP >= 0.9144
+  predicted chromatic floor at 45 deg: 7.102 %

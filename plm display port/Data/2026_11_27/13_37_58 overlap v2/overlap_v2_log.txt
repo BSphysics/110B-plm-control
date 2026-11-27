@@ -1,0 +1,29 @@
+Predicted chromatic floor (6.6 nm FWHM): 7.12 %  [dnu_AB = [ 0.0709 -0.0016] cyc/px, rms hologram extent along dnu = 342 px]
+Auto-exposure
+  exposure 800 us -> peak 118.2
+Coarse alignment (centroid Newton)
+  centroid A [287.81 242.14], B [287.42 243.72]; Jacobian (px per cycle/px):
+[[ 5295.3   808.3]
+ [  553.7 -4535.9]]
+  Newton 0: |A-B| = 0.195 px
+  ROI: 395 px
+  P_B/P_A = 1.196 -> amplitude ratio rho = 0.9144
+Start of fine search: null = 2.11 %
+Budget before fine search: null 2.12 %  ->  amplitude 0.22 + wavefront 1.12 + decoherence 0.79 %  (4-step drift indicator 0.67 %: if comparable to the null, drift during the measurement is limiting)
+  camera-plane relative phase fit (rad, px units): tilt_x +0.0853, tilt_y +0.00308, defocus -0.00616, astig0 -0.00605, astig45 -0.00162
+Pass 1
+  dnu_x      eps[-2h..2h] =  5.19  2.90  3.03  3.46  3.27 %  -> move +0.43 h (parabola), value +6.759e-05
+  dnu_y      eps[-2h..2h] =  8.26  5.04  2.99  3.87  7.54 %  -> move +0.14 h (parabola), value +0.0003785
+  z_defocus  eps[-2h..2h] =  8.35  4.72  2.72  4.54  7.61 %  -> move +0.05 h (parabola), value +0.01363
+  z_astig0   eps[-2h..2h] =  4.85  3.16  2.99  3.04  3.79 %  -> move +0.28 h (parabola), value +0.07024
+  z_astig45  eps[-2h..2h] =  4.99  3.37  2.42  2.61  5.81 %  -> move +0.05 h (parabola), value +0.01269
+  z_coma_x   eps[-2h..2h] =  7.13  3.80  3.02  4.90  6.78 %  -> move -0.07 h (parabola), value -0.01457
+  z_coma_y   eps[-2h..2h] =  5.70  1.58  3.85  2.64  4.84 %  -> move -0.28 h (parabola), value -0.05578
+  P_B/P_A = 0.870 -> amplitude ratio rho = 0.9804
+  end of pass: null ~ 3.85 %
+Final measurement
+Budget at optimum: null 1.67 %  ->  amplitude 0.41 + wavefront 0.28 + decoherence 0.99 %  (4-step drift indicator 4.14 %: if comparable to the null, drift during the measurement is limiting)
+  camera-plane relative phase fit (rad, px units): tilt_x -0.0235, tilt_y +0.0081, defocus -0.00494, astig0 -0.00363, astig45 -0.00358
+  null (4-step fit) = 1.66 %, null (HDR x10.0) = 5.01 %, dark-noise floor = 0.006 %
+Verification with GUI-formula hologram: null = 2.59 %
+New B periods: x 47.6961, y 11.3482; amplitudes A 0.771 B 1.000; null phase (Beam A global phase) 7.97 %
